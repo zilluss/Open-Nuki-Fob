@@ -3,6 +3,7 @@ Open Source Nuki Fob based on the the NRF51822 SoC
 
 Special thanks to the Nordic repo of [@pcbreflux](https://github.com/pcbreflux/nordic/), which this project is based on.
 
+Video of the fob in action: [Link](https://www.youtube.com/watch?v=eYI9Il37lno)
 
 ## Prequisits
 The gcc-arm compilers for the NRF51822, openocd and the nRF5 SDK 12.3.0.
