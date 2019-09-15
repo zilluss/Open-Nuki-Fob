@@ -25,9 +25,7 @@ INC_PATHS += -I$(SDK_PATH)/components/softdevice/s130/headers
 INC_PATHS += -I./src
 INC_PATHS += -I./external
 
-vpath %.c $(SDK_PATH)/components/softdevice/s130/headers
-vpath %.c ./src
-vpath %.c ./external
+VPATH=src:external
 
 # object files
 OBJS =  nrf_log_frontend.o nrf_ble_gatt.o crc16.o nrf_queue.o nrf_drv_rng.o
