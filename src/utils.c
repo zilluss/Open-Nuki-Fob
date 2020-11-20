@@ -1,5 +1,6 @@
 #include "utils.h"
-#include "nrf_drv_rng.h"
+#include "nrf_sdh_soc.h"
+#include "nrf_log.h"
 
 void write_uint8LE(uint8_t* buffer, const uint8_t value, const uint32_t byte_offset) 
 {
@@ -102,5 +103,5 @@ uint16_t crc_16(uint8_t *data, uint32_t length, uint16_t initial_remainder)
 
 void randombytes(uint8_t* buffer, uint64_t length) 
 {
-    nrf_drv_rng_block_rand(buffer, length);
+    sd_rand_application_vector_get (buffer, length);
 }

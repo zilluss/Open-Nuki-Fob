@@ -1,0 +1,29 @@
+{
+    "files.associations": {
+        "system_error": "c",
+        "stdint.h": "c",
+        "stdbool.h": "c",
+        "nrf_drv_rng.h": "c",
+        "nrf_gpio.h": "c",
+        "ble_db_discovery.h": "c",
+        "crc16.h": "c",
+        "nrf_ble_scan.h": "c",
+        "nordic_common.h": "c",
+        "nrf_log.h": "c",
+        "nrf_sdh_soc.h": "c",
+        "utils.h": "c",
+        "optional": "c",
+        "istream": "c",
+        "ostream": "c",
+        "array": "c",
+        "functional": "c",
+        "tuple": "c",
+        "type_traits": "c",
+        "utility": "c",
+        "bit": "c",
+        "*.tcc": "c",
+        "cmath": "c",
+        "random": "c"
+    },
+    "C_Cpp.loggingLevel": "Debug"
+}

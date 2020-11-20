@@ -1,0 +1,58 @@
+{
+    "tasks": [
+        {
+            "label": "build",
+            "type": "shell",
+            "command": "",
+            "args": [
+                "make",
+                "--directory=${workspaceFolder};"
+            ],
+            "group":  {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "reveal":"always"
+            },
+            "problemMatcher": "$gcc"
+        },
+        {
+            "label": "flash",
+            "type": "shell",
+            "command": "",
+            "args": [
+                "make",
+                "flash_program",
+                "--directory=${workspaceFolder};"
+            ],
+            "group":  {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "reveal":"always"
+            },
+            "problemMatcher": "$gcc"
+        },
+        {
+            "label": "clean",
+            "type": "shell",
+            "command": "",
+            "args": [
+                "make",
+                "clean",
+                "--directory=${workspaceFolder};"
+            ],
+            "group":  {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "reveal":"always"
+            },
+            "problemMatcher": "$gcc"
+        }
+    ],
+    "version": "2.0.0"
+}

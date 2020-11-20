@@ -7,19 +7,24 @@ uint8_t public_key_nuki[32];
 uint8_t public_key_fob[32];
 uint8_t private_key_fob[32];
 
+#define MAGIC_NUMBER_PAIRING_CONTEXT 3355
+
 typedef struct 
 {
     uint8_t shared_secret[32];
     uint32_t authorization_id;
     uint32_t app_id;
     uint8_t paired_lock_uuid[6];
+    uint16_t magic_number;
 } __attribute__((packed, aligned(4))) pairing_context;
 
 #define USDIO_CHAR_UUID 0xe202
 #define NUKI_KEYTURNER_SERVICE_BASE_UUID 0x66,0x9a,0x0c,0x20,0x00,0x08,0x6c,0x91,0xe4,0x11,0x01,0x55,0x00,0xe2,0x2e,0xa9
+#define NUKI_KEYTURNER_SERVICE_VENDOR_UUID 0xe200
 
 #define GDIO_CHAR_UUID 0xe101
 #define NUKI_PAIRING_SERVICE_BASE_UUID 0x66,0x9a,0x0c,0x20,0x00,0x08,0x6c,0x91,0xe4,0x11,0x01,0x55,0x00,0xe1,0x2e,0xa9
+#define NUKI_PAIRING_SERVICE_VENDOR_UUID 0xe100
 
 #define PAIRING_NONCEBYTES 32
 
