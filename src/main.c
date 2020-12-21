@@ -47,6 +47,7 @@
 #define BUTTON_PIN 28
 #define LED_PIN 29
 #define NRF_CLOCK_LFCLKSRC {.source = NRF_CLOCK_LF_SRC_XTAL, .rc_ctiv = 0, .rc_temp_ctiv  = 0, .xtal_accuracy = NRF_CLOCK_LF_XTAL_ACCURACY_20_PPM}
+#define LAST_FLASH_PAGE (NRF_FICR->CODESIZE - 1) 
 
 #define BUTTON_PULL NRF_GPIO_PIN_PULLUP
 #define BUTTON_PRESSED 0
@@ -75,8 +76,8 @@ static uint16_t io_characteristic = 0;
 enum fob_action {
     ACTION_NONE = 0, ACTION_FOB_1 = 1, ACTION_FOB_2 = 2, ACTION_FOB_3 = 3, ACTION_PAIRING = 4
 };
-static uint16_t action_to_execute = ACTION_NONE;
-static uint8_t led_counter = 0;
+static volatile uint16_t action_to_execute = ACTION_NONE;
+static volatile uint8_t led_counter = 0;
 
 static uint16_t connection_handle = 0;
 
@@ -149,11 +150,12 @@ static bool is_paired_uuid(const uint8_t* uuid2)
     return true;
 }
 
-static bool advertises_pairing(const uint8_t* advertising_data) 
+static bool advertises_pairing(const ble_gap_evt_adv_report_t* adv_report) 
 {
+    if(adv_report->dlen < 21) {return false;}
     for(int i = 0; i < 16; i++) 
     {
-        if(advertising_data[5+i] != NUKI_PAIRING_SERVICE_UUID.uuid128[i]) 
+        if(adv_report->data[5+i] != NUKI_PAIRING_SERVICE_UUID.uuid128[i]) 
         {
             return false;
         }
@@ -223,7 +225,7 @@ static void find_lock_to_connect(ble_gap_evt_adv_report_t * p_adv_report)
 {
     bool lock_found = false;
     //search for a device that advertises the pairing service
-    if(action_to_execute == ACTION_PAIRING && advertises_pairing(p_adv_report->data))
+    if(action_to_execute == ACTION_PAIRING && advertises_pairing(p_adv_report))
     {
         lock_found = true;
         pairing_context* pairing_ctx = get_pairing_context();
@@ -312,7 +314,7 @@ static void power_manage(void)
     shutdown_on_error(err_code);
 }
 
-static bool button_timer_running = false;
+static volatile bool button_timer_running = false;
 static void button_timer_handler(void * p_context)
 {
     button_timer_running = false;
@@ -415,9 +417,8 @@ static uint16_t read_action_to_execute() {
 
 void load_settings_from_flash() {
     pairing_context* pairing_ctx = get_pairing_context();
-    uint8_t last_flash_page = NRF_FICR->CODESIZE - 1;
     uint8_t words_read;
-    ble_flash_page_read (last_flash_page, (uint32_t*)pairing_ctx, &words_read);
+    ble_flash_page_read (LAST_FLASH_PAGE, (uint32_t*)pairing_ctx, &words_read);
 }
 
 void unlock_finished() {
@@ -427,8 +428,8 @@ void unlock_finished() {
 void pairing_finished() {
     sd_softdevice_disable();
     pairing_context* pairing_ctx = get_pairing_context();
-    uint8_t last_flash_page = NRF_FICR->CODESIZE - 1;
-    ble_flash_page_write(last_flash_page, (uint32_t*)(pairing_ctx), sizeof(pairing_context)/4);
+    ble_flash_page_erase(LAST_FLASH_PAGE);
+    ble_flash_page_write(LAST_FLASH_PAGE, (uint32_t*)(pairing_ctx), sizeof(pairing_context)/4);
     shutdown();
 }
 

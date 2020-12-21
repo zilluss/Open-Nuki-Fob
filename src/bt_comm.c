@@ -47,7 +47,9 @@ static void gattc_long_write(uint16_t connection_handle, uint16_t attribute_hand
         m_out_message_progress += mtu_length;
 
         uint32_t err_code = sd_ble_gattc_write(connection_handle, &write_params);
-        if(err_code != NRF_SUCCESS) NRF_LOG_ERROR("Error during GATT write %x %i\r\n", err_code, connection_handle);
+        if(err_code != NRF_SUCCESS) {
+            NRF_LOG_ERROR("Error during GATT write %x %i\r\n", err_code, connection_handle);
+        }
    } 
    else 
    {
@@ -61,7 +63,9 @@ static void gattc_long_write(uint16_t connection_handle, uint16_t attribute_hand
         m_out_message_length = 0;
         m_out_message_progress = 0;
         uint32_t err_code = sd_ble_gattc_write(connection_handle, &write_params);
-        if(err_code != NRF_SUCCESS) NRF_LOG_ERROR("Error during GATT write execute\r\n");
+        if(err_code != NRF_SUCCESS) {
+            NRF_LOG_ERROR("Error during GATT write execute\r\n");
+        }
     }
 }
 
