@@ -3,8 +3,13 @@ TARGETS          := nrf52832_xxaa
 OUTPUT_DIRECTORY := build
 
 SDK_ROOT=
-TEMPLATE_PATH=$(SDK_PATH)/components/toolchain/gcc
+TEMPLATE_PATH=$(SDK_ROOT)/components/toolchain/gcc
+OPENOCD_HOME=
+OPENOCD=
+
 PROJ_DIR := .
+SDK_CONFIG_FILE := ./config/sdk_config.h
+CMSIS_CONFIG_TOOL := $(SDK_ROOT)/external_tools/cmsisconfig/CMSIS_Configuration_Wizard.jar
 
 HEX_FILE := $(OUTPUT_DIRECTORY)/$(TARGETS).hex
 
@@ -61,7 +66,6 @@ SRC_FILES += \
   $(SDK_ROOT)/components/ble/common/ble_srv_common.c \
   $(SDK_ROOT)/components/ble/nrf_ble_scan/nrf_ble_scan.c \
   $(SDK_ROOT)/components/ble/nrf_ble_gatt/nrf_ble_gatt.c \
-  $(SDK_ROOT)/components/ble/ble_db_discovery/ble_db_discovery.c \
   $(SDK_ROOT)/components/libraries/queue/nrf_queue.c \
   $(SDK_ROOT)/components/ble/nrf_ble_gq/nrf_ble_gq.c \
   $(SDK_ROOT)/integration/nrfx/legacy/nrf_drv_rng.c \
@@ -90,7 +94,6 @@ INC_FOLDERS += \
   $(SDK_ROOT)/components/nfc/t4t_parser/hl_detection_procedure \
   $(SDK_ROOT)/components/ble/ble_services/ble_ancs_c \
   $(SDK_ROOT)/components/ble/ble_services/ble_ias_c \
-  $(SDK_ROOT)/components/ble/ble_db_discovery \
   $(SDK_ROOT)/components/libraries/queue/ \
   $(SDK_ROOT)/components/ble/nrf_ble_gq \
   $(SDK_ROOT)/components/ble/nrf_ble_scan \
@@ -220,9 +223,12 @@ INC_FOLDERS += \
 LIB_FILES += \
 
 # Optimization flags
-OPT = -O3 -g3
-# Uncomment the line below to enable link time optimization
-OPT += -flto
+OPT = -g3
+OPT += -O0 
+#OPT += -flto
+
+DEBUG_FLAGS = 
+#DEBUG_FLAGS += -DDEBUG -DDEBUG_NRF
 
 # C flags common to all targets
 CFLAGS += $(OPT)
@@ -238,7 +244,7 @@ CFLAGS += -DS132
 CFLAGS += -DSOFTDEVICE_PRESENT
 CFLAGS += -DSHA2_USE_INTTYPES_H
 CFLAGS += -DBYTE_ORDER=LITTLE_ENDIAN
-#CFLAGS += -DDEBUG -DDEBUG_NRF
+CFLAGS += -DCONFIG_NFCT_PINS_AS_GPIOS
 CFLAGS += -mcpu=cortex-m4
 CFLAGS += -mthumb -mabi=aapcs
 CFLAGS += -Wall -Werror
@@ -246,6 +252,7 @@ CFLAGS += -mfloat-abi=hard -mfpu=fpv4-sp-d16
 # keep every function in a separate section, this allows linker to discard unused ones
 CFLAGS += -ffunction-sections -fdata-sections -fno-strict-aliasing
 CFLAGS += -fno-builtin -fshort-enums
+CFLAGS += $(DEBUG_FLAGS)
 
 # C++ flags common to all targets
 CXXFLAGS += $(OPT)
@@ -264,7 +271,7 @@ ASMFLAGS += -DNRF52_PAN_74
 ASMFLAGS += -DNRF_SD_BLE_API_VERSION=7
 ASMFLAGS += -DS132
 ASMFLAGS += -DSOFTDEVICE_PRESENT
-#ASMFLAGS += -DDEBUG -DDEBUG_NRF
+CFLAGS += $(DEBUG_FLAGS)
 
 # Linker flags
 LDFLAGS += $(OPT)
@@ -301,19 +308,15 @@ help:
 	@echo		sdk_config - starting external tool for editing sdk_config.h
 	@echo		flash      - flashing binary
 
-TEMPLATE_PATH := $(SDK_ROOT)/components/toolchain/gcc
-
-
 include $(TEMPLATE_PATH)/Makefile.common
 
 $(foreach target, $(TARGETS), $(call define_target, $(target)))
 
 .PHONY: flash flash_erase flash_program flash
 
-OPENOCD_HOME=
-OPENOCD=
 
-S132_HEX_FILE=$(SDK_ROOT)/components/softdevice/s132/hex/s132_nrf52_7.0.1_softdevice.hex
+
+S132_HEX_FILE=$(SDK_ROOT)/components/softdevice/s132/hex/s132_nrf52_7.2.0_softdevice.hex
 
 flash_erase: 
 	$(OPENOCD) -s $(OPENOCD_HOME)/tcl -d2 -f $(PROJ_DIR)/config/openocd.cfg -c 'init_reset halt; init; halt; nrf51 mass_erase; reset; exit'
@@ -322,13 +325,12 @@ flash_program: $(HEX_FILE)
 	$(OPENOCD) -s $(OPENOCD_HOME)/tcl -d2 -f $(PROJ_DIR)/config/openocd.cfg -c 'init_reset halt; init; halt; program $< verify; reset; exit'
 
 flash_softdevice: $(HEX_FILE)
-	$(OPENOCD) -s $(OPENOCD_HOME)/tcl -d2 -f $(PROJ_DIR)/config/openocd.cfg -c 'init_reset halt; init; halt; nrf52 mass_erase; program $(S132_HEX_FILE) verify; reset; exit'
+	$(OPENOCD) -s $(OPENOCD_HOME)/tcl -d2 -f $(PROJ_DIR)/config/openocd.cfg -c 'init_reset halt; init; halt; program $(S132_HEX_FILE) verify; reset; exit'
 
 flash: $(HEX_FILE)
 	$(OPENOCD) -s $(OPENOCD_HOME)/tcl -d2 -f $(PROJ_DIR)/config/openocd.cfg -c 'init_reset halt; init; halt; program $(S132_HEX_FILE) verify; program $< verify; reset; exit'
 
-
-SDK_CONFIG_FILE := ./config/sdk_config.h
-CMSIS_CONFIG_TOOL := $(SDK_ROOT)/external_tools/cmsisconfig/CMSIS_Configuration_Wizard.jar
 sdk_config:
 	java -jar $(CMSIS_CONFIG_TOOL) $(SDK_CONFIG_FILE)
+
+print-%  : ; @echo $* = $($*)

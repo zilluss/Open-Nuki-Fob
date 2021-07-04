@@ -11,6 +11,8 @@ static uint16_t m_expected_response_length = 0;
 static uint8_t m_response_message_progress = 0;
 static uint8_t m_response_message_buffer[200];
 
+static uint16_t m_mtu_size = DEFAULT_MTU_SIZE;
+
 //bt_comm.h
 void send_with_response(uint8_t* message_out, uint16_t message_out_length, 
     uint16_t expected_response_length, void (*callback)(uint8_t*, uint16_t)) 
@@ -30,8 +32,8 @@ static void gattc_long_write(uint16_t connection_handle, uint16_t attribute_hand
 {
     if(m_out_message_progress < m_out_message_length) {
         int32_t remaining_message_length = m_out_message_length - m_out_message_progress;
-        uint16_t mtu_length = MTU_SIZE;
-        if(remaining_message_length < MTU_SIZE) {
+        uint16_t mtu_length = m_mtu_size;
+        if(remaining_message_length < m_mtu_size) {
             mtu_length = remaining_message_length;
         }
 
@@ -61,8 +63,7 @@ static void gattc_long_write(uint16_t connection_handle, uint16_t attribute_hand
         };
         m_out_message_length = 0;
         m_out_message_progress = 0;
-        uint32_t err_code = sd_ble_gattc_write(connection_handle, &write_params);
-        if(err_code != NRF_SUCCESS) NRF_LOG_ERROR("Error during GATT write execute\r\n");
+        sd_ble_gattc_write(connection_handle, &write_params);
     }
 }
 
@@ -72,9 +73,7 @@ void bt_comm_on_ble_evt(const ble_evt_t * p_ble_evt)
     switch (p_ble_evt->header.evt_id)
     {
         case BLE_GATTC_EVT_TIMEOUT:
-            NRF_LOG_INFO("GATTC timeout\r\n");
             err_code = sd_ble_gap_disconnect(p_ble_evt->evt.gattc_evt.conn_handle, BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
-            if(err_code != NRF_SUCCESS) NRF_LOG_ERROR("Error during disconnect\r\n");
             break; 
 
         case BLE_GATTC_EVT_WRITE_RSP:
@@ -91,13 +90,13 @@ void bt_comm_on_ble_evt(const ble_evt_t * p_ble_evt)
             }
             if(hvx_evt->type == BLE_GATT_HVX_INDICATION) {
                 err_code = sd_ble_gattc_hv_confirm(p_ble_evt->evt.gattc_evt.conn_handle, hvx_evt->handle);
-                if(err_code != NRF_SUCCESS) NRF_LOG_ERROR("Error during confirm\r\n");
             }
             break;
 
         default:
             break;
     }
+    UNUSED_VARIABLE(err_code);
 }
 
 void process_messages(uint16_t connection_handle, uint16_t attribute_handle) 
@@ -116,4 +115,8 @@ void process_messages(uint16_t connection_handle, uint16_t attribute_handle)
         response_callback(m_response_message_buffer, m_expected_response_length);
     }
 
+}
+
+void set_bt_comm_mtu_size(uint16_t mtu_size) {
+    m_mtu_size = mtu_size;
 }

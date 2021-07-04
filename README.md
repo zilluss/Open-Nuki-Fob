@@ -7,7 +7,7 @@ Video of the fob in action: [Link](https://www.youtube.com/watch?v=eYI9Il37lno)
 The gcc-arm compilers for the NRF528322, openocd (the latest release with NRF52 support) and the nRF5 SDK 17.x.x.
 
 Edit the Makefile and set
-- SDK_PATH: the directory of the NRF SDK
+- SDK_ROOT: the directory of the NRF SDK
 - OPENOCD_HOME: the base directory of openocd which contains the tcl files
 - OPENOCD: the openocd binary
 

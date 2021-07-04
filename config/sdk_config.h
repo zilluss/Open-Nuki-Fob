@@ -4336,7 +4336,7 @@
 // <e> NRFX_UARTE_CONFIG_LOG_ENABLED - Enables logging in the module.
 //==========================================================
 #ifndef NRFX_UARTE_CONFIG_LOG_ENABLED
-#define NRFX_UARTE_CONFIG_LOG_ENABLED 0
+#define NRFX_UARTE_CONFIG_LOG_ENABLED 1
 #endif
 // <o> NRFX_UARTE_CONFIG_LOG_LEVEL  - Default Severity level
  
@@ -7516,9 +7516,15 @@
 #ifndef NRF_LOG_BACKEND_UART_ENABLED
 #define NRF_LOG_BACKEND_UART_ENABLED 1
 #endif
+
 // <o> NRF_LOG_BACKEND_UART_TX_PIN - UART TX pin 
 #ifndef NRF_LOG_BACKEND_UART_TX_PIN
-#define NRF_LOG_BACKEND_UART_TX_PIN 6
+#define NRF_LOG_BACKEND_UART_TX_PIN 9
+#endif
+
+// <o> NRF_LOG_BACKEND_UART_RX_PIN - UART RX pin 
+#ifndef NRF_LOG_BACKEND_UART_RX_PIN
+#define NRF_LOG_BACKEND_UART_RX_PIN 10
 #endif
 
 // <o> NRF_LOG_BACKEND_UART_BAUDRATE  - Default Baudrate
@@ -11225,7 +11231,7 @@
 // <i> Requested BLE GAP data length to be negotiated.
 
 #ifndef NRF_SDH_BLE_GAP_DATA_LENGTH
-#define NRF_SDH_BLE_GAP_DATA_LENGTH 251
+#define NRF_SDH_BLE_GAP_DATA_LENGTH 27
 #endif
 
 // <o> NRF_SDH_BLE_PERIPHERAL_LINK_COUNT - Maximum number of peripheral links. 
@@ -11249,12 +11255,12 @@
 // <i> The time set aside for this connection on every connection interval in 1.25 ms units.
 
 #ifndef NRF_SDH_BLE_GAP_EVENT_LENGTH
-#define NRF_SDH_BLE_GAP_EVENT_LENGTH 6
+#define NRF_SDH_BLE_GAP_EVENT_LENGTH 12
 #endif
 
 // <o> NRF_SDH_BLE_GATT_MAX_MTU_SIZE - Static maximum MTU size. 
 #ifndef NRF_SDH_BLE_GATT_MAX_MTU_SIZE
-#define NRF_SDH_BLE_GATT_MAX_MTU_SIZE 23
+#define NRF_SDH_BLE_GATT_MAX_MTU_SIZE 247
 #endif
 
 // <o> NRF_SDH_BLE_GATTS_ATTR_TAB_SIZE - Attribute Table size in bytes. The size must be a multiple of 4. 
@@ -11362,7 +11368,7 @@
 #endif
 
 #ifndef BLE_DB_DISCOVERY_ENABLED
-#define BLE_DB_DISCOVERY_ENABLED 1
+#define BLE_DB_DISCOVERY_ENABLED 0
 #endif
 
 // <o> BLE_DB_DISC_BLE_OBSERVER_PRIO  
