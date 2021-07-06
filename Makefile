@@ -1,17 +1,21 @@
 PROJECT_NAME     := open_nuki_fob
 TARGETS          := nrf52832_xxaa
 OUTPUT_DIRECTORY := build
+APP_VERSION="0.3.0"
 
-SDK_ROOT=
+SDK_ROOT=$(HOME)/Work/Internal/nordic-master/nrfsdk
 TEMPLATE_PATH=$(SDK_ROOT)/components/toolchain/gcc
-OPENOCD_HOME=
-OPENOCD=
+OPENOCD_HOME=/Users/martin/Work/Internal/openocd-code
+OPENOCD=/Users/martin/Work/Internal/openocd-code/src/openocd
+NRFUTIL=$(HOME)/Work/Internal/nordic-master/nrfutil-mac
+MERGEHEX=/usr/local/bin/mergehex
 
 PROJ_DIR := .
 SDK_CONFIG_FILE := ./config/sdk_config.h
 CMSIS_CONFIG_TOOL := $(SDK_ROOT)/external_tools/cmsisconfig/CMSIS_Configuration_Wizard.jar
 
 HEX_FILE := $(OUTPUT_DIRECTORY)/$(TARGETS).hex
+FAT_HEX_FILE := $(OUTPUT_DIRECTORY)/$(TARGETS)_dfu_s132.hex
 
 $(OUTPUT_DIRECTORY)/nrf52832_xxaa.out: \
   LINKER_SCRIPT  := ./config/open-nuki-fob.ld
@@ -295,7 +299,7 @@ LIB_FILES += -lc -lnosys -lm
 .PHONY: default help
 
 # Default target - first one defined
-default: nrf52832_xxaa
+default: fat_hex
 
 # Print all targets that can be built
 help:
@@ -312,23 +316,37 @@ include $(TEMPLATE_PATH)/Makefile.common
 
 $(foreach target, $(TARGETS), $(call define_target, $(target)))
 
-.PHONY: flash flash_erase flash_program flash
-
-
+.PHONY: bootloader_settings bootloader fat_hex flash flash_erase flash_program flash
 
 S132_HEX_FILE=$(SDK_ROOT)/components/softdevice/s132/hex/s132_nrf52_7.2.0_softdevice.hex
+BOOTLOADER_HEX_FILE=$(PROJ_DIR)/secure_bootloader/build/nrf52832_xxaa_s132.hex
+BOOTLOADER_SETTINGS_HEX_FILE=$(OUTPUT_DIRECTORY)/bootloader_settings.hex
+BOOTLOADER_PRIVATE_KEY=$(PROJ_DIR)/config/bootloader_key.pem
+DFU_UPDATE_PKG=$(OUTPUT_DIRECTORY)/open_nuki_fob_dfu.zip
+
+bootloader:
+	$(MAKE) -C $(PROJ_DIR)/secure_bootloader
+
+bootloader_settings: bootloader nrf52832_xxaa
+	$(NRFUTIL) settings generate --application $(HEX_FILE) --application-version-string $(APP_VERSION) --bootloader-version 1 --bl-settings-version 2 --no-backup --family NRF52 --softdevice $(S132_HEX_FILE) --key-file $(BOOTLOADER_PRIVATE_KEY) $(BOOTLOADER_SETTINGS_HEX_FILE)
+
+dfu_update: nrf52832_xxaa
+	$(NRFUTIL) pkg generate --application $(HEX_FILE) --application-version-string $(APP_VERSION) --sd-req 0x101 --hw-version 52 --key-file $(BOOTLOADER_PRIVATE_KEY) $(DFU_UPDATE_PKG)
+
+fat_hex: bootloader bootloader_settings nrf52832_xxaa
+	$(MERGEHEX) -m $(S132_HEX_FILE) $(HEX_FILE) $(BOOTLOADER_HEX_FILE) $(BOOTLOADER_SETTINGS_HEX_FILE) -o $(FAT_HEX_FILE)
 
 flash_erase: 
-	$(OPENOCD) -s $(OPENOCD_HOME)/tcl -d2 -f $(PROJ_DIR)/config/openocd.cfg -c 'init_reset halt; init; halt; nrf51 mass_erase; reset; exit'
+	$(OPENOCD) -s $(OPENOCD_HOME)/tcl -d2 -f $(PROJ_DIR)/config/openocd.cfg -c 'init_reset halt; init; halt; nrf5 mass_erase; reset; exit'
 
-flash_program: $(HEX_FILE)
-	$(OPENOCD) -s $(OPENOCD_HOME)/tcl -d2 -f $(PROJ_DIR)/config/openocd.cfg -c 'init_reset halt; init; halt; program $< verify; reset; exit'
+flash_program: nrf52832_xxaa
+	$(OPENOCD) -s $(OPENOCD_HOME)/tcl -d2 -f $(PROJ_DIR)/config/openocd.cfg -c 'init_reset halt; init; halt; program $(HEX_FILE) verify; reset; exit'
 
-flash_softdevice: $(HEX_FILE)
+flash_softdevice:
 	$(OPENOCD) -s $(OPENOCD_HOME)/tcl -d2 -f $(PROJ_DIR)/config/openocd.cfg -c 'init_reset halt; init; halt; program $(S132_HEX_FILE) verify; reset; exit'
 
-flash: $(HEX_FILE)
-	$(OPENOCD) -s $(OPENOCD_HOME)/tcl -d2 -f $(PROJ_DIR)/config/openocd.cfg -c 'init_reset halt; init; halt; program $(S132_HEX_FILE) verify; program $< verify; reset; exit'
+flash: fat_hex
+	$(OPENOCD) -s $(OPENOCD_HOME)/tcl -d2 -f $(PROJ_DIR)/config/openocd.cfg -c 'init_reset halt; init; halt; flash erase_sector 0 0 112; flash erase_sector 0 118 127;program $(FAT_HEX_FILE) verify; reset; exit'
 
 sdk_config:
 	java -jar $(CMSIS_CONFIG_TOOL) $(SDK_CONFIG_FILE)

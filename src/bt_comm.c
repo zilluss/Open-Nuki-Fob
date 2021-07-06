@@ -47,7 +47,7 @@ static void gattc_long_write(uint16_t connection_handle, uint16_t attribute_hand
         };
 
 
-        uint32_t err_code = sd_ble_gattc_write(connection_handle, &write_params);
+        ret_code_t err_code = sd_ble_gattc_write(connection_handle, &write_params);
         if(err_code == NRF_SUCCESS) {
             m_out_message_progress += mtu_length;
         }
@@ -69,7 +69,7 @@ static void gattc_long_write(uint16_t connection_handle, uint16_t attribute_hand
 
 void bt_comm_on_ble_evt(const ble_evt_t * p_ble_evt)
 {
-    uint32_t err_code = 0;
+    ret_code_t err_code = 0;
     switch (p_ble_evt->header.evt_id)
     {
         case BLE_GATTC_EVT_TIMEOUT:

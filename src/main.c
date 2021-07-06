@@ -15,6 +15,7 @@
 
 #include "app_timer.h"
 #include "app_error.h"
+#include "app_button.h"
 #include "nrf_delay.h"
 #include "nrf_sdm.h"
 #include "nrf_sdh.h"
@@ -46,11 +47,8 @@
 #define LED_PIN 26
 
 #define BUTTON_PULL NRF_GPIO_PIN_PULLUP
-#define BUTTON_PRESSED 0
-#define BUTTON_RELEASED 1
 #define BUTTON_SENSE NRF_GPIO_PIN_SENSE_LOW
-#define DELAY_100_MS 100 * 1000
-#define DEBOUNCE_TIME_MS 50
+#define BUTTON_DETECTION_DELAY APP_TIMER_TICKS(50)
 
 #define BATTERY_LOW_VOLTAGE 2.7
 #define ADC_GAIN (1.f/6.f)
@@ -58,13 +56,17 @@
 #define ADC_RESOLUTION_BITS (8 + (NRFX_SAADC_CONFIG_RESOLUTION * 2))
 
 static void fstorage_evt_handler(nrf_fstorage_evt_t * p_evt);
-#define LAST_FLASH_PAGE ((NRF_FICR->CODESIZE - 1) * NRF_FICR->CODEPAGESIZE)
+#define BOOTLOADER_PAGES 12
+#define LAST_FLASH_PAGE ((NRF_FICR->CODESIZE - BOOTLOADER_PAGES) * NRF_FICR->CODEPAGESIZE)
 
-APP_TIMER_DEF(button_counter_timer_id);
+APP_TIMER_DEF(button_hold_timer_id);
+APP_TIMER_DEF(wait_for_input_timer_id);
 APP_TIMER_DEF(shutdown_timer_id);
 APP_TIMER_DEF(led_timer_id);
+
+#define BUTTON_HOLD_TICKS APP_TIMER_TICKS(5*1000)
+#define WAIT_FOR_INPUT_TICKS APP_TIMER_TICKS(1000)
 #define SHUTDOWN_TICKS APP_TIMER_TICKS(30*1000)
-#define BUTTON_TIMER_TICKS APP_TIMER_TICKS(1000)
 #define LED_TIMER_TICKS APP_TIMER_TICKS(100)
 
 #define BLINK_PATTERN_BITS 12
@@ -75,6 +77,9 @@ APP_TIMER_DEF(led_timer_id);
 const ble_uuid128_t NUKI_VENDOR_UUID = {.uuid128={ NUKI_KEYTURNER_SERVICE_BASE_UUID }};
 const ble_uuid128_t NUKI_KEYTURNER_SERVICE_UUID = {.uuid128={ NUKI_KEYTURNER_SERVICE_BASE_UUID }};
 const ble_uuid128_t NUKI_PAIRING_SERVICE_UUID = {.uuid128={ NUKI_PAIRING_SERVICE_BASE_UUID }};
+
+#define RESET_TO_DFU_BOOTLOADER 0xB1
+#define FIRST_STARTUP_CHECK 0x3A
 
 NRF_BLE_SCAN_DEF(m_scan);
 NRF_BLE_GATT_DEF(m_gatt);
@@ -92,8 +97,8 @@ static uint16_t connection_handle = BLE_CONN_HANDLE_INVALID;
 static uint16_t io_characteristic_handle = 0;
 static uint16_t cccd_handle = 0;
 
-static volatile bool button_timer_running = false;
-static bool wakeup_from_gpio = false;
+static volatile uint8_t times_button_released = 0;
+
 static volatile bool flash_ready_to_write = false;
 static bool battery_is_low = false;
 static int blink_bit = 0;
@@ -113,11 +118,10 @@ static ble_gap_scan_params_t const m_scan_params =
     .timeout           = BLE_SCAN_TIMEOUT_SECONDS 
 };
 
-
 enum application_states {
-    AS_INITIAL = 0, AS_ENABLE_INDICATIONS, AS_WAIT_FOR_INDICATIONS_ENABLED, AS_LOCK_COMMUNICATION
+    AS_WAIT_FOR_INPUT = 0, AS_CONNECT_TO_LOCK, AS_ENABLE_INDICATIONS, AS_WAIT_FOR_INDICATIONS_ENABLED, AS_LOCK_COMMUNICATION
 };
-static uint16_t application_state = AS_INITIAL;
+static uint16_t application_state = AS_WAIT_FOR_INPUT;
 
 static ble_gap_conn_params_t const m_connection_param =
 {
@@ -127,6 +131,13 @@ static ble_gap_conn_params_t const m_connection_param =
     SUPERVISION_TIMEOUT
 };
 
+static void reset_into_bootloader() 
+{
+    NRF_LOG_INFO("Resetting into bootloader");
+    sd_power_gpregret_set(0, RESET_TO_DFU_BOOTLOADER);
+    sd_nvic_SystemReset();
+}
+
 static void shutdown() 
 {
     NRF_LOG_INFO("Enter sleep mode");
@@ -135,7 +146,7 @@ static void shutdown()
     sd_power_system_off();
 }
 
-static void shutdown_on_error(uint32_t error_code)
+static void shutdown_on_error(ret_code_t error_code)
 {
     if(error_code != NRF_SUCCESS) 
     {
@@ -202,8 +213,8 @@ static uint32_t enable_indications()
     };
 
     application_state = AS_WAIT_FOR_INDICATIONS_ENABLED;
-    uint32_t err = sd_ble_gattc_write(connection_handle, &write_params);
-    return err;
+    ret_code_t err_code = sd_ble_gattc_write(connection_handle, &write_params);
+    return err_code;
 }
 
 static void start_service_discovery() {
@@ -250,6 +261,7 @@ static void scan_start()
 
 static void find_lock_to_connect(const ble_gap_evt_adv_report_t * p_adv_report) 
 {
+    if(action_to_execute == ACTION_NONE) {return;}
     bool lock_found = false;
     //search for a device that advertises the pairing service
     if(action_to_execute == ACTION_PAIRING && advertises_pairing(&p_adv_report->data))
@@ -266,7 +278,7 @@ static void find_lock_to_connect(const ble_gap_evt_adv_report_t * p_adv_report)
 
     if(lock_found) 
     {
-        uint32_t err_code = sd_ble_gap_scan_stop();
+        ret_code_t err_code = sd_ble_gap_scan_stop();
         err_code = sd_ble_gap_connect(&p_adv_report->peer_addr, &m_scan_params, &m_connection_param, APP_BLE_CONN_CFG_TAG);
         shutdown_on_error(err_code);
     }
@@ -274,7 +286,7 @@ static void find_lock_to_connect(const ble_gap_evt_adv_report_t * p_adv_report)
 
 static void on_ble_evt(ble_evt_t const * p_ble_evt, void* p_context)
 {
-    uint32_t err_code = 0;
+    ret_code_t err_code = 0;
     const ble_gap_evt_t * p_gap_evt = &p_ble_evt->evt.gap_evt;
 
     if(application_state == AS_LOCK_COMMUNICATION) {
@@ -356,9 +368,7 @@ static void on_ble_evt(ble_evt_t const * p_ble_evt, void* p_context)
             //Pairing mode doesn't support mtu exchange
             if(action_to_execute == ACTION_PAIRING) {
                 start_service_discovery();
-            } else {
-                sd_ble_gattc_exchange_mtu_request(connection_handle, NRF_SDH_BLE_GATT_MAX_MTU_SIZE);
-            }
+            } 
             break;
 
         case BLE_GAP_EVT_TIMEOUT:
@@ -437,18 +447,53 @@ static void ble_stack_init(void)
     shutdown_on_error(err_code);
 
     NRF_SDH_BLE_OBSERVER(m_ble_observer, APP_BLE_OBSERVER_PRIO, on_ble_evt, NULL);
+
+    uint32_t gpregret;
+    sd_power_gpregret_get(1, &gpregret);
+    sd_power_gpregret_set(1, FIRST_STARTUP_CHECK);
+
+    if(gpregret != FIRST_STARTUP_CHECK) {
+        //Shutdown if the fob was started from a power cycle
+        shutdown();
+    }
 }
 
-static void button_timer_handler(void * p_context)
-{
-    button_timer_running = false;
+static void finish_input_handling(uint16_t action) {
+    action_to_execute = action;
+    application_state = AS_CONNECT_TO_LOCK;
+    NRF_LOG_INFO("Action to execute: %i", action);
 }
 
-static void start_button_timer() 
+static void button_hold_timer_handler(void * p_context)
 {
-    button_timer_running = true;
-    ret_code_t error = app_timer_start(button_counter_timer_id, BUTTON_TIMER_TICKS, NULL);
-    shutdown_on_error(error);
+    if(times_button_released == 0) 
+    {
+        finish_input_handling(ACTION_PAIRING);
+    } 
+    else  if(times_button_released == 4) 
+    {
+        reset_into_bootloader();
+    }
+}
+
+static void wait_for_input_timer_handler(void * p_context) 
+{
+    if(action_to_execute != ACTION_NONE) return;
+    switch(times_button_released) 
+    {
+        case 1:
+            finish_input_handling(ACTION_FOB_1);
+            return;
+        case 2:
+            finish_input_handling(ACTION_FOB_2);
+            return;
+        case 3:
+            finish_input_handling(ACTION_FOB_3);
+            return;
+        default:
+            NRF_LOG_INFO("Invalid input, shutting down");
+            shutdown();
+    }
 }
 
 static void led_timer() 
@@ -461,65 +506,52 @@ static void led_timer()
 static void initialize_timer(void)
 {
 	app_timer_init();
-    app_timer_create(&button_counter_timer_id, APP_TIMER_MODE_SINGLE_SHOT, button_timer_handler);
+    app_timer_create(&button_hold_timer_id, APP_TIMER_MODE_SINGLE_SHOT, button_hold_timer_handler);
+    app_timer_create(&wait_for_input_timer_id, APP_TIMER_MODE_SINGLE_SHOT, wait_for_input_timer_handler);
     app_timer_create(&shutdown_timer_id, APP_TIMER_MODE_SINGLE_SHOT, shutdown);
     app_timer_create(&led_timer_id, APP_TIMER_MODE_REPEATED, led_timer);
 }
 
+static void button_handler_callback(uint8_t pin, uint8_t action)
+{
+    if(application_state != AS_WAIT_FOR_INPUT && times_button_released > 0) {
+        sd_nvic_SystemReset();
+    }
+
+    if(action == APP_BUTTON_PUSH) 
+    {
+        //start a timer to check if the button is held down for 5s
+        app_timer_start(button_hold_timer_id, BUTTON_HOLD_TICKS, NULL);
+        app_timer_stop(wait_for_input_timer_id);
+    } else 
+    {
+        times_button_released++;
+        //start a timer to check if the button is pushed once more after it was released
+        app_timer_start(wait_for_input_timer_id, WAIT_FOR_INPUT_TICKS, NULL);
+        app_timer_stop(button_hold_timer_id);
+    }
+}
+
 static void init_gpio() {
     NRF_UICR-> NFCPINS = 0xFFFFFFFE; //enable NFC pins as gpio for logging
+    static app_button_cfg_t buttons[] =
+    {
+        {BUTTON_PIN, APP_BUTTON_ACTIVE_LOW, BUTTON_PULL, button_handler_callback}
+    };
+
+    ret_code_t err_code = app_button_init(buttons, ARRAY_SIZE(buttons), BUTTON_DETECTION_DELAY);
     nrf_gpio_cfg_sense_input(BUTTON_PIN, BUTTON_PULL, BUTTON_SENSE);
+    shutdown_on_error(err_code);
+
     nrf_gpio_cfg_output(LED_PIN);
     nrf_gpio_pin_clear(LED_PIN);
-    wakeup_from_gpio = (nrf_gpio_pin_read(BUTTON_PIN) == BUTTON_PRESSED);
+
+    //handle the first input that woke the fob
+    bool button_pressed = nrf_gpio_pin_read(BUTTON_PIN) == APP_BUTTON_ACTIVE_LOW;
+    button_handler_callback(BUTTON_PIN, button_pressed ? APP_BUTTON_PUSH : APP_BUTTON_RELEASE);
 }
 
-static bool click_registered() {
-    uint32_t last_button_state = nrf_gpio_pin_read(BUTTON_PIN);
-
-    start_button_timer();
-    while(button_timer_running) {
-        uint32_t current_button_state = nrf_gpio_pin_read(BUTTON_PIN);
-        if(last_button_state == BUTTON_PRESSED && current_button_state == BUTTON_RELEASED) {
-            return true;
-        }
-        last_button_state = current_button_state;
-    }
-    return false;
-}
-
-static bool hold_registered() {
-    //4 seconds because click 1 already consumed 1 second
-    for(int i = 0; i < 40; i++) {
-        if(nrf_gpio_pin_read(BUTTON_PIN) == BUTTON_RELEASED) {
-            return false;
-        }
-        nrf_delay_us(DELAY_100_MS);
-    }
-    return true;
-}
-
-static uint16_t read_action_to_execute() {
-    
-    //fix to detect a click that occured before the initialization of the Softdevice
-    bool click_before_init = wakeup_from_gpio && nrf_gpio_pin_read(BUTTON_PIN) == BUTTON_RELEASED;
-    bool click_1 = click_registered() || click_before_init;
-    nrf_delay_us(DEBOUNCE_TIME_MS);
-    if(click_1) {
-        bool click_2 = click_registered();
-        if(!click_2) {return ACTION_FOB_1;}
-        nrf_delay_us(DEBOUNCE_TIME_MS);
-        bool click_3 = click_registered();
-        if(!click_3) {return ACTION_FOB_2;}
-        return ACTION_FOB_3;
-    } 
-    if(hold_registered()) {
-        return ACTION_PAIRING;
-    }
-    return ACTION_NONE;
-}
-
-void init_flash_and_load_settings_from_flash() {
+static void init_flash_and_load_settings_from_flash() {
     ret_code_t error = nrf_fstorage_init(
         &fstorage,
         &nrf_fstorage_sd,
@@ -529,9 +561,6 @@ void init_flash_and_load_settings_from_flash() {
 
     pairing_context* pairing_ctx = get_pairing_context();
     error = nrf_fstorage_read (&fstorage, LAST_FLASH_PAGE, (void*)pairing_ctx, sizeof(pairing_context));
-    if(action_to_execute != ACTION_PAIRING && pairing_ctx->magic_number != MAGIC_NUMBER_PAIRING_CONTEXT) {
-        shutdown();
-    }
     shutdown_on_error(error);
 }
 
@@ -547,7 +576,7 @@ void pairing_finished() {
     //shutdown will happen once writing is finished
 }
 
-void write_pairing_context_to_flash() {
+static void write_pairing_context_to_flash() {
     flash_ready_to_write = false;
     pairing_context* pairing_ctx = get_pairing_context();
     pairing_ctx->magic_number = MAGIC_NUMBER_PAIRING_CONTEXT;
@@ -561,7 +590,7 @@ static void log_init(void)
     NRF_LOG_DEFAULT_BACKENDS_INIT();
 }
 
-void saadc_event_handler(nrfx_saadc_evt_t const * p_event) {
+static void saadc_event_handler(nrfx_saadc_evt_t const * p_event) {
     //not needed since we only need a one time measurement
 }
 
@@ -571,7 +600,7 @@ static float voltage_from_adc_measurement(uint32_t adc_val)
     return voltage;
 }
 
-void saadc_init() {
+static void saadc_init() {
   nrfx_saadc_config_t saadc_config = NRFX_SAADC_DEFAULT_CONFIG;
   ret_code_t err_code = nrfx_saadc_init(&saadc_config, saadc_event_handler);
   shutdown_on_error(err_code);
@@ -580,7 +609,7 @@ void saadc_init() {
   shutdown_on_error(err_code);
 }
 
-void measure_battery_voltage() {
+static void measure_battery_voltage() {
   nrf_saadc_value_t value;
   nrfx_saadc_sample_convert(0, &value);
   float voltage = voltage_from_adc_measurement(value);
@@ -588,19 +617,7 @@ void measure_battery_voltage() {
   nrfx_saadc_channel_uninit(NRF_SAADC_INPUT_AIN0);
 }
 
-int main(void)
-{
-    init_gpio();
-    log_init();
-	ble_stack_init();
-    saadc_init();
-    measure_battery_voltage();
-    initialize_timer();
-    action_to_execute = read_action_to_execute();
-    if(action_to_execute == ACTION_NONE) {
-        shutdown();
-    } 
-
+static void input_finished() {
     if(battery_is_low) {
         blink_pattern = BLINK_PATTERN_UNLOCK_LOW_BATTERY;
     }
@@ -608,13 +625,33 @@ int main(void)
     if(action_to_execute == ACTION_PAIRING) {
         blink_pattern = BLINK_PATTERN_PAIRING;
     }
+
     app_timer_start(led_timer_id, LED_TIMER_TICKS, NULL);
     app_timer_start(shutdown_timer_id, SHUTDOWN_TICKS, NULL);
 
+    pairing_context* pairing_ctx = get_pairing_context();
+    if(action_to_execute != ACTION_PAIRING && pairing_ctx->magic_number != MAGIC_NUMBER_PAIRING_CONTEXT) {
+        shutdown();
+    }
+}
+
+int main(void)
+{
+    initialize_timer();
+    log_init();
+	ble_stack_init();
+    init_gpio();
+    saadc_init();
+    measure_battery_voltage();
     init_flash_and_load_settings_from_flash();
     gatt_init();
     scan_init();
     scan_start();
+
+    while (application_state == AS_WAIT_FOR_INPUT) {
+        NRF_LOG_PROCESS();
+    }
+    input_finished();
 
     while (true)
     {
@@ -625,11 +662,6 @@ int main(void)
             }
             if(application_state == AS_LOCK_COMMUNICATION) {
                 process_messages(connection_handle, io_characteristic_handle);
-            }
-
-            uint32_t button_state = nrf_gpio_pin_read(BUTTON_PIN);
-            if(button_state == BUTTON_PRESSED && action_to_execute != ACTION_PAIRING) {
-                shutdown();
             }
         }
     }
