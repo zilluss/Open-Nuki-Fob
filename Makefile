@@ -228,8 +228,8 @@ LIB_FILES += \
 
 # Optimization flags
 OPT = -g3
-OPT += -O0 
-#OPT += -flto
+OPT += -O3 
+OPT += -flto
 
 DEBUG_FLAGS = 
 #DEBUG_FLAGS += -DDEBUG -DDEBUG_NRF
