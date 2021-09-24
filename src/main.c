@@ -59,13 +59,11 @@ static void fstorage_evt_handler(nrf_fstorage_evt_t * p_evt);
 #define BOOTLOADER_PAGES 12
 #define LAST_FLASH_PAGE ((NRF_FICR->CODESIZE - BOOTLOADER_PAGES) * NRF_FICR->CODEPAGESIZE)
 
-APP_TIMER_DEF(button_hold_timer_id);
-APP_TIMER_DEF(wait_for_input_timer_id);
+APP_TIMER_DEF(input_timer_id);
 APP_TIMER_DEF(shutdown_timer_id);
 APP_TIMER_DEF(led_timer_id);
 
-#define BUTTON_HOLD_TICKS APP_TIMER_TICKS(5*1000)
-#define WAIT_FOR_INPUT_TICKS APP_TIMER_TICKS(1000)
+#define INPUT_TICKS APP_TIMER_TICKS(500)
 #define SHUTDOWN_TICKS APP_TIMER_TICKS(30*1000)
 #define LED_TIMER_TICKS APP_TIMER_TICKS(100)
 
@@ -98,6 +96,7 @@ static uint16_t io_characteristic_handle = 0;
 static uint16_t cccd_handle = 0;
 
 static volatile uint8_t times_button_released = 0;
+static volatile float seconds_since_startup = 0;
 
 static volatile bool flash_ready_to_write = false;
 static bool battery_is_low = false;
@@ -462,37 +461,42 @@ static void finish_input_handling(uint16_t action) {
     action_to_execute = action;
     application_state = AS_CONNECT_TO_LOCK;
     NRF_LOG_INFO("Action to execute: %i", action);
+    app_timer_stop(input_timer_id);
 }
 
-static void button_hold_timer_handler(void * p_context)
+static void input_timer_handler(void * p_context) 
 {
-    if(times_button_released == 0) 
-    {
+    if(application_state != AS_WAIT_FOR_INPUT) {return;}
+    seconds_since_startup += 0.5;
+
+    if(seconds_since_startup >= 5 && times_button_released == 1) {
         finish_input_handling(ACTION_PAIRING);
-    } 
-    else  if(times_button_released == 4) 
-    {
-        reset_into_bootloader();
+        return;
     }
-}
 
-static void wait_for_input_timer_handler(void * p_context) 
-{
-    if(action_to_execute != ACTION_NONE) return;
-    switch(times_button_released) 
-    {
-        case 1:
-            finish_input_handling(ACTION_FOB_1);
-            return;
-        case 2:
-            finish_input_handling(ACTION_FOB_2);
-            return;
-        case 3:
-            finish_input_handling(ACTION_FOB_3);
-            return;
-        default:
-            NRF_LOG_INFO("Invalid input, shutting down");
-            shutdown();
+    if(seconds_since_startup >= 10) {
+        reset_into_bootloader();
+        return;
+    }
+
+    if(seconds_since_startup >= 2.0) {
+        switch(times_button_released) 
+        {
+            case 0:
+                return;
+            case 1:
+                finish_input_handling(ACTION_FOB_1);
+                return;
+            case 2:
+                finish_input_handling(ACTION_FOB_2);
+                return;
+            case 3:
+                finish_input_handling(ACTION_FOB_3);
+                return;
+            default:
+                NRF_LOG_INFO("Invalid input, shutting down");
+                shutdown();
+        }
     }
 }
 
@@ -506,29 +510,22 @@ static void led_timer()
 static void initialize_timer(void)
 {
 	app_timer_init();
-    app_timer_create(&button_hold_timer_id, APP_TIMER_MODE_SINGLE_SHOT, button_hold_timer_handler);
-    app_timer_create(&wait_for_input_timer_id, APP_TIMER_MODE_SINGLE_SHOT, wait_for_input_timer_handler);
+    app_timer_create(&input_timer_id, APP_TIMER_MODE_REPEATED, input_timer_handler);
     app_timer_create(&shutdown_timer_id, APP_TIMER_MODE_SINGLE_SHOT, shutdown);
     app_timer_create(&led_timer_id, APP_TIMER_MODE_REPEATED, led_timer);
 }
 
 static void button_handler_callback(uint8_t pin, uint8_t action)
 {
+    /*
     if(application_state != AS_WAIT_FOR_INPUT && times_button_released > 0) {
         sd_nvic_SystemReset();
     }
+    */
 
-    if(action == APP_BUTTON_PUSH) 
-    {
-        //start a timer to check if the button is held down for 5s
-        app_timer_start(button_hold_timer_id, BUTTON_HOLD_TICKS, NULL);
-        app_timer_stop(wait_for_input_timer_id);
-    } else 
+    if(action == APP_BUTTON_RELEASE) 
     {
         times_button_released++;
-        //start a timer to check if the button is pushed once more after it was released
-        app_timer_start(wait_for_input_timer_id, WAIT_FOR_INPUT_TICKS, NULL);
-        app_timer_stop(button_hold_timer_id);
     }
 }
 
@@ -549,6 +546,7 @@ static void init_gpio() {
     //handle the first input that woke the fob
     bool button_pressed = nrf_gpio_pin_read(BUTTON_PIN) == APP_BUTTON_ACTIVE_LOW;
     button_handler_callback(BUTTON_PIN, button_pressed ? APP_BUTTON_PUSH : APP_BUTTON_RELEASE);
+    app_timer_start(input_timer_id, INPUT_TICKS, NULL);
 }
 
 static void init_flash_and_load_settings_from_flash() {
@@ -646,12 +644,12 @@ int main(void)
     init_flash_and_load_settings_from_flash();
     gatt_init();
     scan_init();
-    scan_start();
 
     while (application_state == AS_WAIT_FOR_INPUT) {
         NRF_LOG_PROCESS();
     }
     input_finished();
+    scan_start();
 
     while (true)
     {
