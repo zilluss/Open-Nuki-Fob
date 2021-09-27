@@ -1,14 +1,14 @@
 PROJECT_NAME     := open_nuki_fob
 TARGETS          := nrf52832_xxaa
 OUTPUT_DIRECTORY := build
-APP_VERSION="0.3.0"
+APP_VERSION="0.4.0"
 
-SDK_ROOT=
+SDK_ROOT=$(HOME)/Work/Internal/nordic-master/nrfsdk
 TEMPLATE_PATH=$(SDK_ROOT)/components/toolchain/gcc
-OPENOCD_HOME=
-OPENOCD=
-NRFUTIL=
-MERGEHEX=
+OPENOCD_HOME=/Users/martin/Work/Internal/openocd-code
+OPENOCD=/Users/martin/Work/Internal/openocd-code/src/openocd
+NRFUTIL=$(HOME)/Work/Internal/nordic-master/nrfutil-mac
+MERGEHEX=/usr/local/bin/mergehex
 
 PROJ_DIR := .
 SDK_CONFIG_FILE := ./config/sdk_config.h
