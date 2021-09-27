@@ -43,8 +43,11 @@
 #define SLAVE_LATENCY 0
 #define SUPERVISION_TIMEOUT MSEC_TO_UNITS(4000, UNIT_10_MS) 
 
-#define BUTTON_PIN 25
-#define LED_PIN 26
+#define BUTTON_PIN 11
+#define LED_PIN 30
+
+#define LED_ON 0
+#define LED_OFF 1
 
 #define BUTTON_PULL NRF_GPIO_PIN_PULLUP
 #define BUTTON_SENSE NRF_GPIO_PIN_SENSE_LOW
@@ -68,6 +71,7 @@ APP_TIMER_DEF(led_timer_id);
 #define LED_TIMER_TICKS APP_TIMER_TICKS(100)
 
 #define BLINK_PATTERN_BITS 12
+#define BLINK_PATTERN_IDLE                  0b000000000000
 #define BLINK_PATTERN_UNLOCK                0b110000000000
 #define BLINK_PATTERN_UNLOCK_LOW_BATTERY    0b101010000000
 #define BLINK_PATTERN_PAIRING               0b111111111111
@@ -101,7 +105,7 @@ static volatile float seconds_since_startup = 0;
 static volatile bool flash_ready_to_write = false;
 static bool battery_is_low = false;
 static int blink_bit = 0;
-static int blink_pattern = BLINK_PATTERN_UNLOCK;
+static int blink_pattern = BLINK_PATTERN_IDLE;
 
 enum fob_action {
     ACTION_NONE = 0, ACTION_FOB_1 = 1, ACTION_FOB_2 = 2, ACTION_FOB_3 = 3, ACTION_PAIRING = 4
@@ -140,7 +144,7 @@ static void reset_into_bootloader()
 static void shutdown() 
 {
     NRF_LOG_INFO("Enter sleep mode");
-    nrf_gpio_pin_clear(LED_PIN);
+    nrf_gpio_pin_write(LED_PIN, LED_OFF);
     nrf_gpio_cfg_sense_input(BUTTON_PIN, BUTTON_PULL, BUTTON_SENSE);
     sd_power_system_off();
 }
@@ -469,9 +473,12 @@ static void input_timer_handler(void * p_context)
     if(application_state != AS_WAIT_FOR_INPUT) {return;}
     seconds_since_startup += 0.5;
 
-    if(seconds_since_startup >= 5 && times_button_released == 1) {
-        finish_input_handling(ACTION_PAIRING);
-        return;
+    if(seconds_since_startup >= 5) {
+        blink_pattern = BLINK_PATTERN_PAIRING;
+        if(times_button_released == 1) {
+            finish_input_handling(ACTION_PAIRING);
+            return;
+        }
     }
 
     if(seconds_since_startup >= 10) {
@@ -502,7 +509,7 @@ static void input_timer_handler(void * p_context)
 
 static void led_timer() 
 {
-    nrf_gpio_pin_write(LED_PIN, (blink_pattern >> blink_bit) & 0x01);
+    nrf_gpio_pin_write(LED_PIN, ((blink_pattern >> blink_bit) & 0x01) ^ LED_OFF);
     blink_bit++;
     if(blink_bit >= BLINK_PATTERN_BITS) blink_bit = 0;
 }
@@ -510,18 +517,22 @@ static void led_timer()
 static void initialize_timer(void)
 {
 	app_timer_init();
+
     app_timer_create(&input_timer_id, APP_TIMER_MODE_REPEATED, input_timer_handler);
+    app_timer_start(input_timer_id, INPUT_TICKS, NULL);
+
     app_timer_create(&shutdown_timer_id, APP_TIMER_MODE_SINGLE_SHOT, shutdown);
+    app_timer_start(shutdown_timer_id, SHUTDOWN_TICKS, NULL);
+
     app_timer_create(&led_timer_id, APP_TIMER_MODE_REPEATED, led_timer);
+    app_timer_start(led_timer_id, LED_TIMER_TICKS, NULL);
 }
 
 static void button_handler_callback(uint8_t pin, uint8_t action)
 {
-    /*
     if(application_state != AS_WAIT_FOR_INPUT && times_button_released > 0) {
         sd_nvic_SystemReset();
     }
-    */
 
     if(action == APP_BUTTON_RELEASE) 
     {
@@ -541,12 +552,11 @@ static void init_gpio() {
     shutdown_on_error(err_code);
 
     nrf_gpio_cfg_output(LED_PIN);
-    nrf_gpio_pin_clear(LED_PIN);
+    nrf_gpio_pin_write(LED_PIN, LED_OFF);
 
     //handle the first input that woke the fob
     bool button_pressed = nrf_gpio_pin_read(BUTTON_PIN) == APP_BUTTON_ACTIVE_LOW;
     button_handler_callback(BUTTON_PIN, button_pressed ? APP_BUTTON_PUSH : APP_BUTTON_RELEASE);
-    app_timer_start(input_timer_id, INPUT_TICKS, NULL);
 }
 
 static void init_flash_and_load_settings_from_flash() {
@@ -624,9 +634,6 @@ static void input_finished() {
         blink_pattern = BLINK_PATTERN_PAIRING;
     }
 
-    app_timer_start(led_timer_id, LED_TIMER_TICKS, NULL);
-    app_timer_start(shutdown_timer_id, SHUTDOWN_TICKS, NULL);
-
     pairing_context* pairing_ctx = get_pairing_context();
     if(action_to_execute != ACTION_PAIRING && pairing_ctx->magic_number != MAGIC_NUMBER_PAIRING_CONTEXT) {
         shutdown();
@@ -635,9 +642,9 @@ static void input_finished() {
 
 int main(void)
 {
-    initialize_timer();
     log_init();
-	ble_stack_init();
+    ble_stack_init();
+    initialize_timer();
     init_gpio();
     saadc_init();
     measure_battery_voltage();

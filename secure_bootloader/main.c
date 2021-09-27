@@ -66,9 +66,11 @@
 
 #define LED_TIMER_TICKS NRF_BOOTLOADER_MS_TO_TICKS(200)
 #define BLINK_PATTERN_BITS 16
-#define BLINK_PATTERN_BOOTLOADER 0b1110011100100100
-#define BLINK_PATTERN_TRANSPORT 0b1010101010101010
-#define LED_PIN 26
+#define BLINK_PATTERN_TRANSPORT 0b1110011100100100
+#define BLINK_PATTERN_BOOTLOADER 0b1010101010101010
+#define LED_PIN 30
+#define LED_ON 0
+#define LED_OFF 1
 static uint8_t blink_bit = 0;
 static uint16_t blink_pattern = BLINK_PATTERN_BOOTLOADER;
 void nrf_bootloader_led_timer_start(uint32_t timeout_ticks, nrf_bootloader_dfu_timeout_callback_t callback);
@@ -110,7 +112,7 @@ void app_error_handler_bare(uint32_t error_code)
 
 void led_timer_callback(void) 
 {
-    nrf_gpio_pin_write(LED_PIN, (BLINK_PATTERN_BOOTLOADER >> blink_bit) & 0x01);
+    nrf_gpio_pin_write(LED_PIN, ((blink_pattern >> blink_bit)&0x01) ^ LED_OFF);
     blink_bit++;
     if(blink_bit >= BLINK_PATTERN_BITS) blink_bit = 0;
 }
@@ -126,7 +128,7 @@ static void dfu_observer(nrf_dfu_evt_type_t evt_type)
         case NRF_DFU_EVT_DFU_ABORTED:
         case NRF_DFU_EVT_DFU_INITIALIZED:
             nrf_gpio_cfg_output(LED_PIN);
-            nrf_gpio_pin_clear(LED_PIN);
+            nrf_gpio_pin_write(LED_PIN, LED_OFF);
             nrf_bootloader_led_timer_start(LED_TIMER_TICKS, led_timer_callback);
             break;
         case NRF_DFU_EVT_TRANSPORT_ACTIVATED:
