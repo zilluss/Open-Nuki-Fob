@@ -456,7 +456,7 @@ static void ble_stack_init(void)
     sd_power_gpregret_set(1, FIRST_STARTUP_CHECK);
 
     if(gpregret != FIRST_STARTUP_CHECK) {
-        //Shutdown if the fob was started from a power cycle
+        //Shutdown if the fob was started from a power cycle or DFU reboot
         shutdown();
     }
 }

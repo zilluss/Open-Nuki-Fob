@@ -127,6 +127,7 @@ static void dfu_observer(nrf_dfu_evt_type_t evt_type)
         case NRF_DFU_EVT_DFU_FAILED:
         case NRF_DFU_EVT_DFU_ABORTED:
         case NRF_DFU_EVT_DFU_INITIALIZED:
+            NRF_POWER->GPREGRET2 = 0; //clear flags so the app shuts down after reboot
             nrf_gpio_cfg_output(LED_PIN);
             nrf_gpio_pin_write(LED_PIN, LED_OFF);
             nrf_bootloader_led_timer_start(LED_TIMER_TICKS, led_timer_callback);
