@@ -331,7 +331,7 @@ bootloader_settings: bootloader nrf52832_xxaa
 	$(NRFUTIL) settings generate --application $(HEX_FILE) --application-version-string $(APP_VERSION) --bootloader-version 1 --bl-settings-version 2 --no-backup --family NRF52 --softdevice $(S132_HEX_FILE) --key-file $(BOOTLOADER_PRIVATE_KEY) $(BOOTLOADER_SETTINGS_HEX_FILE)
 
 dfu_update: nrf52832_xxaa
-	$(NRFUTIL) pkg generate --application $(HEX_FILE) --application-version-string $(APP_VERSION) --sd-req 0x101 --hw-version 52 --key-file $(BOOTLOADER_PRIVATE_KEY) $(DFU_UPDATE_PKG)
+	$(NRFUTIL) pkg generate --application $(HEX_FILE) --application-version-string $(APP_VERSION) --bootloader $(BOOTLOADER_HEX_FILE) --bootloader-version 1 --sd-id 0x101 --sd-req 0x101 --softdevice $(S132_HEX_FILE) --hw-version 52 --key-file $(BOOTLOADER_PRIVATE_KEY) $(DFU_UPDATE_PKG)
 
 fat_hex: bootloader bootloader_settings nrf52832_xxaa
 	$(MERGEHEX) -m $(S132_HEX_FILE) $(HEX_FILE) $(BOOTLOADER_HEX_FILE) $(BOOTLOADER_SETTINGS_HEX_FILE) -o $(FAT_HEX_FILE)
