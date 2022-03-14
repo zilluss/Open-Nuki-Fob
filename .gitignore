@@ -2,5 +2,4 @@
 build
 
 config/bootloader_key.pem
-.vscode/.cortex-debug.peripherals.state.json
-.vscode/.cortex-debug.registers.state.json
+.vscode/

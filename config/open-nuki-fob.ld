@@ -11,10 +11,6 @@ MEMORY
 
 SECTIONS
 {
-}
-
-SECTIONS
-{
   . = ALIGN(4);
   .mem_section_dummy_ram :
   {

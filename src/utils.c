@@ -2,45 +2,40 @@
 #include "nrf_sdh_soc.h"
 #include "nrf_log.h"
 
-void write_uint8LE(uint8_t* buffer, const uint8_t value, const uint32_t byte_offset) 
-{
+void write_uint8LE(uint8_t* buffer, const uint8_t value, const uint32_t byte_offset) {
     buffer[byte_offset] = value;
 }
 
-void write_uint16LE(uint8_t* buffer, const uint16_t value, const uint32_t byte_offset) 
-{
+void write_uint16LE(uint8_t* buffer, const uint16_t value, const uint32_t byte_offset) {
     write_uint8LE(buffer, value & 0xFF, byte_offset);
-    write_uint8LE(buffer, (value >> +8) & 0xFF, byte_offset+1);
+    write_uint8LE(buffer, (value >> +8) & 0xFF, byte_offset + 1);
 }
 
-void write_uint32LE(uint8_t* buffer, const uint32_t value, const uint32_t byte_offset) 
-{
+void write_uint32LE(uint8_t* buffer, const uint32_t value, const uint32_t byte_offset) {
     //fix for arm cortex m-0 where you can't write 32bit values between 4 byte boundaries
     write_uint8LE(buffer, value & 0xFF, byte_offset);
-    write_uint8LE(buffer, (value >> +8) & 0xFF, byte_offset+1);
-    write_uint8LE(buffer, (value >> +16) & 0xFF, byte_offset+2);
-    write_uint8LE(buffer, (value >> +24) & 0xFF, byte_offset+3);
+    write_uint8LE(buffer, (value >> +8) & 0xFF, byte_offset + 1);
+    write_uint8LE(buffer, (value >> +16) & 0xFF, byte_offset + 2);
+    write_uint8LE(buffer, (value >> +24) & 0xFF, byte_offset + 3);
 }
 
-uint16_t read_uint16LE(uint8_t* buffer, const uint32_t byte_offset) 
-{
+uint16_t read_uint16LE(uint8_t* buffer, const uint32_t byte_offset) {
     uint16_t value = 0;
-    value |= buffer[byte_offset+1] << 8;
-    value |= buffer[byte_offset]; 
+    value |= buffer[byte_offset + 1] << 8;
+    value |= buffer[byte_offset];
     return value;
 }
 
-uint32_t read_uint32LE(uint8_t* buffer, const uint32_t byte_offset) 
-{
+uint32_t read_uint32LE(uint8_t* buffer, const uint32_t byte_offset) {
     uint32_t value = 0;
-    value |= buffer[byte_offset+3] << 24;
-    value |= buffer[byte_offset+2] << 16;
-    value |= buffer[byte_offset+1] << 8;
-    value |= buffer[byte_offset]; 
+    value |= buffer[byte_offset + 3] << 24;
+    value |= buffer[byte_offset + 2] << 16;
+    value |= buffer[byte_offset + 1] << 8;
+    value |= buffer[byte_offset];
     return value;
 }
 
-static const uint16_t crc_table [256] = {
+static const uint16_t crc_table[256] = {
 
 0x0000, 0x1021, 0x2042, 0x3063, 0x4084, 0x50a5,
 0x60c6, 0x70e7, 0x8108, 0x9129, 0xa14a, 0xb16b,
@@ -87,21 +82,18 @@ static const uint16_t crc_table [256] = {
 0x2e93, 0x3eb2, 0x0ed1, 0x1ef0
 };
 
-uint16_t crc_16(uint8_t *data, uint32_t length, uint16_t initial_remainder)
-{ 
-   uint32_t count;
-   uint16_t crc = initial_remainder;
-   uint16_t temp;
+uint16_t crc_16(uint8_t* data, uint32_t length, uint16_t initial_remainder) {
+    uint32_t count;
+    uint16_t crc = initial_remainder;
+    uint16_t temp;
 
-   for (count = 0; count < length; count++)
-   {
-     temp = (*data++ ^ (crc >> 8)) & 0xff;
-     crc = crc_table[temp] ^ (crc << 8);
-   }
-   return crc;
-} 
+    for(count = 0; count < length; count++) {
+        temp = (*data++ ^ (crc >> 8)) & 0xff;
+        crc = crc_table[temp] ^ (crc << 8);
+    }
+    return crc;
+}
 
-void randombytes(uint8_t* buffer, uint64_t length) 
-{
-    sd_rand_application_vector_get (buffer, length);
+void randombytes(uint8_t* buffer, uint64_t length) {
+    sd_rand_application_vector_get(buffer, length);
 }

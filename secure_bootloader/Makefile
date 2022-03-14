@@ -127,7 +127,6 @@ INC_FOLDERS += \
   $(SDK_ROOT)/components/toolchain/cmsis/include \
   $(SDK_ROOT)/components/libraries/balloc \
   $(SDK_ROOT)/components/libraries/atomic_fifo \
-  $(SDK_ROOT)/external/micro-ecc/micro-ecc \
   $(PROJ_DIR) \
   $(SDK_ROOT)/components/libraries/crypto/backend/nrf_sw \
   $(SDK_ROOT)/modules/nrfx/mdk \

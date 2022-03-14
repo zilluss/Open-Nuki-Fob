@@ -1,14 +1,15 @@
 PROJECT_NAME     := open_nuki_fob
 TARGETS          := nrf52832_xxaa
 OUTPUT_DIRECTORY := build
-APP_VERSION="0.3.0"
+APP_VERSION="0.4.0"
+BUILD := debug
 
-SDK_ROOT=
+SDK_ROOT=$(HOME)/Work/Internal/nordic-master/nrfsdk
 TEMPLATE_PATH=$(SDK_ROOT)/components/toolchain/gcc
-OPENOCD_HOME=
-OPENOCD=
-NRFUTIL=
-MERGEHEX=
+OPENOCD_HOME=/Users/martin/Work/Internal/openocd-code
+OPENOCD=/Users/martin/Work/Internal/openocd-code/src/openocd
+NRFUTIL=$(HOME)/Work/Internal/nordic-master/nrfutil-mac
+MERGEHEX=/usr/local/bin/mergehex
 
 PROJ_DIR := .
 SDK_CONFIG_FILE := ./config/sdk_config.h
@@ -82,6 +83,7 @@ SRC_FILES += \
   $(PROJ_DIR)/external/sha2.c \
   $(PROJ_DIR)/external/tweetnacl.c \
   $(PROJ_DIR)/src/nuki.c \
+  $(PROJ_DIR)/src/fob_data.c \
   $(PROJ_DIR)/src/bt_comm.c \
   $(PROJ_DIR)/src/nuki_pairing.c \
   $(PROJ_DIR)/src/nuki_unlock.c \
@@ -226,16 +228,12 @@ INC_FOLDERS += \
 # Libraries common to all targets
 LIB_FILES += \
 
-# Optimization flags
-OPT = -g3
-OPT += -O3 
-OPT += -flto
-
-DEBUG_FLAGS = 
-#DEBUG_FLAGS += -DDEBUG -DDEBUG_NRF
+BUILD := debug
+cflags.debug := -g3 -O0 -DDEBUG -DDEBUG_NRF
+cflags.release := -g0 -O3 -flto
+CFLAGS := ${cflags.${BUILD}} ${cflags.common}
 
 # C flags common to all targets
-CFLAGS += $(OPT)
 CFLAGS += -DAPP_TIMER_V2
 CFLAGS += -DAPP_TIMER_V2_RTC1_ENABLED
 CFLAGS += -DCONFIG_GPIO_AS_PINRESET
@@ -256,10 +254,7 @@ CFLAGS += -mfloat-abi=hard -mfpu=fpv4-sp-d16
 # keep every function in a separate section, this allows linker to discard unused ones
 CFLAGS += -ffunction-sections -fdata-sections -fno-strict-aliasing
 CFLAGS += -fno-builtin -fshort-enums
-CFLAGS += $(DEBUG_FLAGS)
 
-# C++ flags common to all targets
-CXXFLAGS += $(OPT)
 # Assembler flags common to all targets
 ASMFLAGS += -g3
 ASMFLAGS += -mcpu=cortex-m4
@@ -275,10 +270,8 @@ ASMFLAGS += -DNRF52_PAN_74
 ASMFLAGS += -DNRF_SD_BLE_API_VERSION=7
 ASMFLAGS += -DS132
 ASMFLAGS += -DSOFTDEVICE_PRESENT
-CFLAGS += $(DEBUG_FLAGS)
 
 # Linker flags
-LDFLAGS += $(OPT)
 LDFLAGS += -mthumb -mabi=aapcs -L$(SDK_ROOT)/modules/nrfx/mdk -T$(LINKER_SCRIPT)
 LDFLAGS += -mcpu=cortex-m4
 LDFLAGS += -mfloat-abi=hard -mfpu=fpv4-sp-d16
@@ -331,7 +324,7 @@ bootloader_settings: bootloader nrf52832_xxaa
 	$(NRFUTIL) settings generate --application $(HEX_FILE) --application-version-string $(APP_VERSION) --bootloader-version 1 --bl-settings-version 2 --no-backup --family NRF52 --softdevice $(S132_HEX_FILE) --key-file $(BOOTLOADER_PRIVATE_KEY) $(BOOTLOADER_SETTINGS_HEX_FILE)
 
 dfu_update: nrf52832_xxaa
-	$(NRFUTIL) pkg generate --application $(HEX_FILE) --application-version-string $(APP_VERSION) --sd-req 0x101 --hw-version 52 --key-file $(BOOTLOADER_PRIVATE_KEY) $(DFU_UPDATE_PKG)
+	$(NRFUTIL) pkg generate --application $(HEX_FILE) --application-version-string $(APP_VERSION) --bootloader $(BOOTLOADER_HEX_FILE) --bootloader-version 1 --sd-id 0x101 --sd-req 0x101 --softdevice $(S132_HEX_FILE) --hw-version 52 --key-file $(BOOTLOADER_PRIVATE_KEY) $(DFU_UPDATE_PKG)
 
 fat_hex: bootloader bootloader_settings nrf52832_xxaa
 	$(MERGEHEX) -m $(S132_HEX_FILE) $(HEX_FILE) $(BOOTLOADER_HEX_FILE) $(BOOTLOADER_SETTINGS_HEX_FILE) -o $(FAT_HEX_FILE)

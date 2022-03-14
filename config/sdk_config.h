@@ -6079,7 +6079,7 @@
 // <i> This option can be used when app_timer is used for timestamping.
 
 #ifndef APP_TIMER_KEEPS_RTC_ACTIVE
-#define APP_TIMER_KEEPS_RTC_ACTIVE 0
+#define APP_TIMER_KEEPS_RTC_ACTIVE 1
 #endif
 
 // <o> APP_TIMER_SAFE_WINDOW_MS - Maximum possible latency (in milliseconds) of handling app_timer event. 
@@ -7617,7 +7617,7 @@
 // <i> Log data is buffered and can be processed in idle.
 
 #ifndef NRF_LOG_DEFERRED
-#define NRF_LOG_DEFERRED 0
+#define NRF_LOG_DEFERRED 1
 #endif
 
 // <q> NRF_LOG_FILTERS_ENABLED  - Enable dynamic filtering of logs.
@@ -7726,7 +7726,7 @@
 // <i> Function for getting the timestamp is provided by the user
 //==========================================================
 #ifndef NRF_LOG_USES_TIMESTAMP
-#define NRF_LOG_USES_TIMESTAMP 0
+#define NRF_LOG_USES_TIMESTAMP 1
 #endif
 // <o> NRF_LOG_TIMESTAMP_DEFAULT_FREQUENCY - Default frequency of the timestamp (in Hz) or 0 to use app_timer frequency. 
 #ifndef NRF_LOG_TIMESTAMP_DEFAULT_FREQUENCY
