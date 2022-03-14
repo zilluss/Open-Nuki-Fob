@@ -54,12 +54,6 @@
 #define BUTTON_SENSE NRF_GPIO_PIN_SENSE_LOW
 #define BUTTON_DETECTION_DELAY APP_TIMER_TICKS(50)
 
-#define BATTERY_LOW_VOLTAGE 2.7
-#define ADC_GAIN (1.f/6.f)
-#define ADC_REFERENCE_VOLTAGE (0.6f)
-#define ADC_RESOLUTION_BITS (8 + (NRFX_SAADC_CONFIG_RESOLUTION * 2))
-
-
 APP_TIMER_DEF(input_timer_id);
 APP_TIMER_DEF(shutdown_timer_id);
 APP_TIMER_DEF(led_timer_id);
@@ -71,7 +65,6 @@ APP_TIMER_DEF(led_timer_id);
 #define BLINK_PATTERN_BITS 12
 #define BLINK_PATTERN_IDLE                  0b000000000000
 #define BLINK_PATTERN_UNLOCK                0b110000000000
-#define BLINK_PATTERN_UNLOCK_LOW_BATTERY    0b101010000000
 #define BLINK_PATTERN_PAIRING               0b111111111111
 
 static uint8_t scratch_buffer[4096];
@@ -95,7 +88,6 @@ static uint16_t cccd_handle = 0;
 static volatile uint8_t times_button_released = 0;
 static volatile float seconds_since_startup = 0;
 
-static bool battery_is_low = false;
 static int blink_bit = 0;
 static int blink_pattern = BLINK_PATTERN_IDLE;
 
@@ -592,33 +584,6 @@ static void log_init(void) {
     NRF_LOG_DEFAULT_BACKENDS_INIT();
 }
 
-static void saadc_event_handler(nrfx_saadc_evt_t const* p_event) {
-    //not needed since we only need a one time measurement
-}
-
-static float voltage_from_adc_measurement(uint32_t adc_val) {
-    float voltage = adc_val / ((ADC_GAIN / ADC_REFERENCE_VOLTAGE) * pow(2, ADC_RESOLUTION_BITS));
-    return voltage;
-}
-
-static void saadc_init() {
-    nrfx_saadc_config_t saadc_config = NRFX_SAADC_DEFAULT_CONFIG;
-    ret_code_t err_code = nrfx_saadc_init(&saadc_config, saadc_event_handler);
-    shutdown_on_error(err_code);
-    nrf_saadc_channel_config_t channel_config = NRFX_SAADC_DEFAULT_CHANNEL_CONFIG_SE(NRF_SAADC_INPUT_AIN0);
-    err_code = nrfx_saadc_channel_init(0, &channel_config);
-    shutdown_on_error(err_code);
-}
-
-static void measure_battery_voltage() {
-    nrf_saadc_value_t value;
-    nrfx_saadc_sample_convert(0, &value);
-    float voltage = voltage_from_adc_measurement(value);
-    NRF_LOG_INFO("Battery voltage is " NRF_LOG_FLOAT_MARKER, NRF_LOG_FLOAT(voltage));
-    battery_is_low = voltage < BATTERY_LOW_VOLTAGE;
-    nrfx_saadc_channel_uninit(NRF_SAADC_INPUT_AIN0);
-}
-
 static void signal_action() {
     switch(action_to_execute) {
         case ACTION_PAIRING:
@@ -628,9 +593,6 @@ static void signal_action() {
         case ACTION_FOB_2:
         case ACTION_FOB_3:
             blink_pattern = BLINK_PATTERN_UNLOCK;
-            if(battery_is_low) {
-                blink_pattern = BLINK_PATTERN_UNLOCK_LOW_BATTERY;
-            }
             break;
     }
 }
@@ -659,8 +621,6 @@ int main(void) {
     ble_stack_init();
     initialize_timer();
     init_gpio();
-    saadc_init();
-    measure_battery_voltage();
     gatt_init();
 
     while(true) {
