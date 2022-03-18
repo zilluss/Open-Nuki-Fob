@@ -84,6 +84,7 @@ NRF_BLE_GQ_DEF(m_ble_gatt_queue,
 static uint16_t connection_handle = BLE_CONN_HANDLE_INVALID;
 static uint16_t io_characteristic_handle = 0;
 static uint16_t cccd_handle = 0;
+static bool handles_updated = false;
 
 static volatile uint8_t times_button_released = 0;
 static volatile float seconds_since_startup = 0;
@@ -113,7 +114,9 @@ static ble_gap_scan_params_t m_scan_params =
 };
 
 enum application_states {
-    AS_WAIT_FOR_INPUT = 0, AS_INPUT_FINISHED, AS_CONNECT_TO_LOCK, AS_ENABLE_INDICATIONS, AS_WAIT_FOR_INDICATIONS_ENABLED,
+    AS_WAIT_FOR_INPUT = 0, AS_INPUT_FINISHED, 
+    AS_CONNECT_TO_LOCK, AS_ENABLE_INDICATIONS, AS_WAIT_FOR_INDICATIONS_ENABLED,
+    AS_DISCOVER_SERVICES, AS_UPDATE_HANDLE_CACHE,
     AS_LOCK_COMMUNICATION, AS_WRITE_FOB_DATA
 };
 static uint16_t application_state = AS_WAIT_FOR_INPUT;
@@ -144,6 +147,7 @@ static void reset_into_bootloader() {
 
 static void shutdown() {
     NRF_LOG_INFO("Enter sleep mode");
+    NRF_LOG_FINAL_FLUSH();
     nrf_gpio_pin_write(LED_PIN, LED_OFF);
     nrf_gpio_cfg_sense_input(BUTTON_PIN, BUTTON_PULL, BUTTON_SENSE);
     sd_power_system_off();
@@ -167,16 +171,31 @@ void app_error_fault_handler(uint32_t id, uint32_t pc, uint32_t info) {
     shutdown();
 }
 
+static void reset_shutdown_timer() {
+    app_timer_stop(shutdown_timer_id);
+    app_timer_start(shutdown_timer_id, SHUTDOWN_TICKS, NULL);
+}
+
 static void unlock_finished() {
-    shutdown();
+    if(handles_updated) {
+        app_timer_stop(shutdown_timer_id);
+        fob_data_writing_ctx.data.handles.handles.cccd_handle = cccd_handle;
+        fob_data_writing_ctx.data.handles.handles.keyturner_handle = io_characteristic_handle;
+        memcpy(fob_data_writing_ctx.data.handles.lock_uuid, nuki_ctx.lock_action.key.lock_uuid, NUKI_UUID_LEN);
+        fob_data_writing_ctx.page_buffer = &scratch_buffer;
+        fob_data_writing_ctx.write_state = WS_START_HANDLE_CACHE;
+
+        application_state = AS_UPDATE_HANDLE_CACHE;
+    } else {
+        shutdown();
+    }
 }
 
 static void pairing_finished() {
     app_timer_stop(shutdown_timer_id);
     fob_data_writing_ctx.data.pairing = nuki_ctx.pairing.key;
     fob_data_writing_ctx.page_buffer = scratch_buffer;
-
-    fob_data_writing_ctx.write_state = WS_START;
+    fob_data_writing_ctx.write_state = WS_START_FOB_DATA;
     application_state = AS_WRITE_FOB_DATA;
 }
 
@@ -212,6 +231,7 @@ static bool advertises_keyturner(const ble_data_t* advertising_data) {
 }
 
 static uint32_t enable_indications() {
+    NRF_LOG_INFO("Enable indications");
     uint8_t buf[BLE_CCCD_VALUE_LEN];
 
     buf[0] = BLE_GATT_HVX_INDICATION;
@@ -232,6 +252,7 @@ static uint32_t enable_indications() {
 }
 
 static void start_service_discovery() {
+    NRF_LOG_INFO("Start service discovery");
     uint8_t uuid_type;
     ble_uuid_t uuid;
 
@@ -266,6 +287,7 @@ static void scan_start() {
     shutdown_on_error(err_code);
 
     sd_ble_gap_disconnect(connection_handle, BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
+    connection_handle = BLE_CONN_HANDLE_INVALID;
     nrf_ble_scan_stop();
 
     err_code = nrf_ble_scan_start(&m_scan);
@@ -297,6 +319,7 @@ static void connect_to_nearest_lock() {
 
     advertised_lock* nearest_advertised_lock = NULL;
     lock_pairing const* nearest_paired_lock = NULL;
+    const handle_cache* handles = get_handle_cache();
 
     int8_t lowest_rssi = INT8_MAX;
     for(int found_lock_index = 0; found_lock_index < lock_buffer->n_locks; found_lock_index++) {
@@ -307,6 +330,8 @@ static void connect_to_nearest_lock() {
                 lowest_rssi = advertised_lock->rssi;
                 nearest_advertised_lock = advertised_lock;
                 nearest_paired_lock = &fob_data->paired_locks[paired_lock_index];
+                cccd_handle = handles->handle_for_lock[paired_lock_index].cccd_handle;
+                io_characteristic_handle = handles->handle_for_lock[paired_lock_index].keyturner_handle;
             }
         }
     }
@@ -349,23 +374,23 @@ static void on_ble_evt(ble_evt_t const* p_ble_evt, void* p_context) {
         case BLE_GATTC_EVT_CHAR_DISC_RSP: {
             const ble_gattc_evt_char_disc_rsp_t* p_char_disc_rsp = &p_ble_evt->evt.gattc_evt.params.char_disc_rsp;
             const uint16_t looked_for_characteristic_uuid = action_to_execute == ACTION_PAIRING ? GDIO_CHAR_UUID : USDIO_CHAR_UUID;
-            uint16_t last_handle = 0;
+            uint16_t last_reported_handle = 0;
             for(int i = 0; i < p_char_disc_rsp->count; i++) {
                 if(p_char_disc_rsp->chars[i].uuid.uuid == looked_for_characteristic_uuid) {
-                    ble_gattc_handle_range_t handle_range = {
-                        .start_handle = p_char_disc_rsp->chars[i].handle_value,
-                        .end_handle = p_char_disc_rsp->chars[i].handle_value,
-                    };
                     io_characteristic_handle = p_char_disc_rsp->chars[i].handle_value;
+                    ble_gattc_handle_range_t handle_range = {
+                        .start_handle = io_characteristic_handle+1,
+                        .end_handle = io_characteristic_handle+1
+                    };
                     sd_ble_gattc_descriptors_discover(connection_handle, &handle_range);
                     break;
                 }
-                last_handle = p_char_disc_rsp->chars[i].handle_value;
+                last_reported_handle = p_char_disc_rsp->chars[i].handle_value;
             }
             if(p_ble_evt->evt.gattc_evt.gatt_status != BLE_GATT_STATUS_ATTERR_ATTRIBUTE_NOT_FOUND) {
                 ble_gattc_handle_range_t handle_range = {
-                        .start_handle = last_handle + 1,
-                        .end_handle = last_handle + 2
+                        .start_handle = last_reported_handle+1,
+                        .end_handle = last_reported_handle+1
                 };
                 sd_ble_gattc_characteristics_discover(connection_handle, &handle_range);
             }
@@ -374,27 +399,26 @@ static void on_ble_evt(ble_evt_t const* p_ble_evt, void* p_context) {
 
         case BLE_GATTC_EVT_DESC_DISC_RSP: {
             const ble_gattc_evt_desc_disc_rsp_t* p_desc_disc_rsp = &p_ble_evt->evt.gattc_evt.params.desc_disc_rsp;
-            uint16_t last_handle = 0;
+            uint16_t last_reported_handle = 0;
             for(int i = 0; i < p_desc_disc_rsp->count; i++) {
                 if(p_desc_disc_rsp->descs[i].uuid.uuid == BLE_UUID_DESCRIPTOR_CLIENT_CHAR_CONFIG) {
                     cccd_handle = p_desc_disc_rsp->descs[i].handle;
                     enable_indications();
                     break;
                 }
-                last_handle = p_desc_disc_rsp->descs[i].handle;
+                last_reported_handle = p_desc_disc_rsp->descs[i].handle;
             }
 
             if(p_ble_evt->evt.gattc_evt.gatt_status != BLE_GATT_STATUS_ATTERR_ATTRIBUTE_NOT_FOUND) {
                 ble_gattc_handle_range_t handle_range = {
-                        .start_handle = last_handle + 1,
-                        .end_handle = last_handle + 2
+                        .start_handle = last_reported_handle+1,
+                        .end_handle = last_reported_handle+1
                 };
                 sd_ble_gattc_descriptors_discover(connection_handle, &handle_range);
             }
             break;
         }
-        case BLE_GAP_EVT_ADV_REPORT:
-        {
+        case BLE_GAP_EVT_ADV_REPORT: {
             if(connection_handle != BLE_CONN_HANDLE_INVALID) { break; }
             const ble_gap_evt_adv_report_t* p_adv_report = &p_gap_evt->params.adv_report;
             find_lock_to_connect(p_adv_report);
@@ -402,6 +426,7 @@ static void on_ble_evt(ble_evt_t const* p_ble_evt, void* p_context) {
         break;
 
         case BLE_GAP_EVT_CONNECTED:
+            NRF_LOG_INFO("Connected to Nuki");
             nrf_ble_scan_stop();
             connection_handle = p_ble_evt->evt.gap_evt.conn_handle;
             //Pairing mode doesn't support mtu exchange
@@ -416,14 +441,27 @@ static void on_ble_evt(ble_evt_t const* p_ble_evt, void* p_context) {
         case BLE_GAP_EVT_TIMEOUT:
             if(p_gap_evt->params.timeout.src == BLE_GAP_TIMEOUT_SRC_SCAN) {
                 if(action_to_execute == ACTION_PAIRING) {
+                    NRF_LOG_INFO("No Nuki in pairing mode found, shutting down");
                     shutdown();
                 }
                 else {
+                    NRF_LOG_INFO("Scanning finished, connecting to the nearest paired lock");
                     connect_to_nearest_lock();
                 }
             }
             else if(p_gap_evt->params.timeout.src == BLE_GAP_TIMEOUT_SRC_CONN) {
-                shutdown();
+                if(handles_updated){
+                    NRF_LOG_INFO("Connection timeout, shutting down");
+                    shutdown();
+                }
+            }
+            break;
+
+        case BLE_GAP_EVT_DISCONNECTED:
+            NRF_LOG_INFO("Disconnected from Nuki");
+            if(application_state == AS_ENABLE_INDICATIONS || application_state == AS_LOCK_COMMUNICATION) {
+                connect_to_nearest_lock();
+                application_state = AS_DISCOVER_SERVICES;
             }
             break;
 
@@ -446,7 +484,13 @@ static void on_ble_evt(ble_evt_t const* p_ble_evt, void* p_context) {
 
         case BLE_GATTC_EVT_EXCHANGE_MTU_RSP:
             set_bt_comm_mtu_size(p_ble_evt->evt.gattc_evt.params.exchange_mtu_rsp.server_rx_mtu);
-            start_service_discovery();
+            if(application_state == AS_DISCOVER_SERVICES) {
+                reset_shutdown_timer();
+                start_service_discovery();
+                handles_updated = true;
+            } else {
+                enable_indications();
+            } 
             break;
 
         default:
@@ -604,12 +648,21 @@ static void handle_application(void) {
             scan_start();
             application_state = AS_WAIT_FOR_INDICATIONS_ENABLED;
             break;
+
+        case AS_ENABLE_INDICATIONS:
+            enable_indications();
+            application_state = AS_WAIT_FOR_INDICATIONS_ENABLED;
+            break;
+
         case AS_LOCK_COMMUNICATION:
             process_messages(&nuki_ctx, connection_handle, io_characteristic_handle);
             break;
+
         case AS_WRITE_FOB_DATA:
+        case AS_UPDATE_HANDLE_CACHE:
             write_fob_data(&fob_data_writing_ctx);
-            if(fob_data_writing_ctx.write_state == WS_WRITING_DONE) {
+            if(fob_data_writing_ctx.write_state == WS_WRITING_DONE || 
+               fob_data_writing_ctx.write_state == WS_ERROR) {
                 shutdown();
             }
             break;
