@@ -26,15 +26,15 @@ static void fstorage_evt_handler(nrf_fstorage_evt_t* p_evt) {
     switch(p_evt->id) {
         case NRF_FSTORAGE_EVT_ERASE_RESULT: {
             if(ctx->write_state == WS_ERASING_FOB_DATA) {
-                NRF_LOG_INFO("Erasing fob data done");
+                NRF_LOG_DEBUG("Erasing fob data done");
                 ctx->write_state = WS_WRITE_FOB_DATA;
             }
             if(ctx->write_state == WS_ERASING_BACKUP_DATA) {
-                NRF_LOG_INFO("Erasing fob data backup done");
+                NRF_LOG_DEBUG("Erasing fob data backup done");
                 ctx->write_state = WS_WRITE_BACKUP_DATA;
             }
             if(ctx->write_state == WS_ERASING_HANDLE_CACHE) {
-                NRF_LOG_INFO("Erasing handle cache done");
+                NRF_LOG_DEBUG("Erasing handle cache done");
                 ctx->write_state = WS_WRITE_HANDLE_CACHE;
             }
             break;
@@ -43,15 +43,15 @@ static void fstorage_evt_handler(nrf_fstorage_evt_t* p_evt) {
 
         case NRF_FSTORAGE_EVT_WRITE_RESULT: {
             if(ctx->write_state == WS_WRITING_FOB_DATA) {
-                NRF_LOG_INFO("Writing fob data done");
+                NRF_LOG_DEBUG("Writing fob data done");
                 ctx->write_state = WS_ERASE_BACKUP_DATA;
             }
             if(ctx->write_state == WS_WRITING_BACKUP_DATA) {
-                NRF_LOG_INFO("Writing fob data backup done");
+                NRF_LOG_DEBUG("Writing fob data backup done");
                 ctx->write_state = WS_WRITING_DONE;
             }
             if(ctx->write_state == WS_WRITING_HANDLE_CACHE) {
-                NRF_LOG_INFO("Writing handle cache done");
+                NRF_LOG_DEBUG("Writing handle cache done");
                 ctx->write_state = WS_WRITING_DONE;
             }
             break;
@@ -105,7 +105,7 @@ static void update_fob_settings(fob_data_writing_context* ctx) {
         }
     }
     fob_data_ram->paired_locks[pairing_slot].pairing = ctx->data.pairing;
-    NRF_LOG_INFO("Storing pairing at slot %i", pairing_slot);
+    NRF_LOG_DEBUG("Storing pairing at slot %i", pairing_slot);
 }
 
 static void update_handles(fob_data_writing_context* ctx) {
@@ -151,25 +151,25 @@ void write_fob_data(fob_data_writing_context* ctx) {
         case WS_ERASE_FOB_DATA:
             erase_flash_page(FOB_DATA_FLASH_ADDRESS, ctx);
             ctx->write_state = WS_ERASING_FOB_DATA;
-            NRF_LOG_INFO("Erasing fob data");
+            NRF_LOG_DEBUG("Erasing fob data");
             break;
 
         case WS_WRITE_FOB_DATA:
             write_flash_page(FOB_DATA_FLASH_ADDRESS, ctx);
             ctx->write_state = WS_WRITING_FOB_DATA;
-            NRF_LOG_INFO("Writing fob data");
+            NRF_LOG_DEBUG("Writing fob data");
             break;
 
         case WS_ERASE_BACKUP_DATA:
             erase_flash_page(FOB_DATA_BACKUP_FLASH_ADDRESS, ctx);
             ctx->write_state = WS_ERASING_BACKUP_DATA;
-            NRF_LOG_INFO("Erasing fob data backup");
+            NRF_LOG_DEBUG("Erasing fob data backup");
             break;
 
         case WS_WRITE_BACKUP_DATA:
             write_flash_page(FOB_DATA_BACKUP_FLASH_ADDRESS, ctx);
             ctx->write_state = WS_WRITING_BACKUP_DATA;
-            NRF_LOG_INFO("Writing fob data backup");
+            NRF_LOG_DEBUG("Writing fob data backup");
             break;
 
         case WS_START_HANDLE_CACHE:
@@ -181,13 +181,13 @@ void write_fob_data(fob_data_writing_context* ctx) {
         case WS_ERASE_HANDLE_CACHE:
             erase_flash_page(HANDLE_CACHE_FLASH_ADDRESS, ctx);
             ctx->write_state = WS_ERASING_HANDLE_CACHE;
-            NRF_LOG_INFO("Erasing handle cache");
+            NRF_LOG_DEBUG("Erasing handle cache");
             break;
 
         case WS_WRITE_HANDLE_CACHE:
             write_flash_page(HANDLE_CACHE_FLASH_ADDRESS, ctx);
             ctx->write_state = WS_WRITING_HANDLE_CACHE;
-            NRF_LOG_INFO("Writing handle cache");
+            NRF_LOG_DEBUG("Writing handle cache");
             break;
 
         default:

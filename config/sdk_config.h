@@ -7608,8 +7608,16 @@
 // <4=> Debug 
 
 #ifndef NRF_LOG_DEFAULT_LEVEL
+
+#ifdef DEBUG_NRF
+#define NRF_LOG_DEFAULT_LEVEL 4
+#else 
 #define NRF_LOG_DEFAULT_LEVEL 3
 #endif
+
+#endif
+
+
 
 // <q> NRF_LOG_DEFERRED  - Enable deffered logger.
  
