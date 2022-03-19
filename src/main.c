@@ -35,8 +35,7 @@
 
 #define BLE_SCAN_INTERVAL 15
 #define BLE_SCAN_WINDOW 15
-#define BLE_SCAN_TIMEOUT_UNLOCK_SECONDS MSEC_TO_UNITS(1000, UNIT_10_MS) 
-#define BLE_SCAN_TIMEOUT_PAIRING_SECONDS MSEC_TO_UNITS(9000, UNIT_10_MS) 
+#define BLE_SCAN_TIMEOUT MSEC_TO_UNITS(30000, UNIT_10_MS) 
 
 
 #define MIN_CONNECTION_INTERVAL MSEC_TO_UNITS(20, UNIT_1_25_MS)
@@ -104,13 +103,12 @@ typedef union {
 static nuki_context nuki_ctx;
 
 
-static ble_gap_scan_params_t m_scan_params =
-{
+static const ble_gap_scan_params_t m_scan_params = {
     .active = 0,
     .filter_policy = BLE_GAP_SCAN_FP_ACCEPT_ALL,
     .interval = BLE_SCAN_INTERVAL,
     .window = BLE_SCAN_WINDOW,
-    .timeout = BLE_SCAN_TIMEOUT_UNLOCK_SECONDS
+    .timeout = BLE_SCAN_TIMEOUT
 };
 
 enum application_states {
@@ -271,6 +269,7 @@ static void start_service_discovery() {
 }
 
 static void scan_start() {
+    NRF_LOG_INFO("Scanning for locks started");
     ret_code_t err_code;
     nrf_ble_scan_init_t init_scan;
 
@@ -294,18 +293,18 @@ static void scan_start() {
     shutdown_on_error(err_code);
 }
 
-static void find_lock_to_connect(const ble_gap_evt_adv_report_t* p_adv_report) {
-    if(action_to_execute == ACTION_NONE) { shutdown(); }
-    //search for a device that advertises the pairing service
-    if(action_to_execute == ACTION_PAIRING && advertises_pairing(&p_adv_report->data)) {
+static void find_lock_in_pairing_mode(const ble_gap_evt_adv_report_t* p_adv_report) {
+    if(advertises_pairing(&p_adv_report->data)) {
         memcpy(&nuki_ctx.pairing.key.lock_uuid, p_adv_report->peer_addr.addr, BLE_GAP_ADDR_LEN);
 
         ret_code_t err_code = sd_ble_gap_scan_stop();
         err_code = sd_ble_gap_connect(&p_adv_report->peer_addr, &m_scan_params, &m_connection_param, APP_BLE_CONN_CFG_TAG);
         shutdown_on_error(err_code);
     }
-    //find the already paired lock
-    else if(advertises_keyturner(&p_adv_report->data)) {
+}
+
+static void find_locks(const ble_gap_evt_adv_report_t* p_adv_report) {
+    if(advertises_keyturner(&p_adv_report->data)) {
         lock_scan* lock_buffer = (lock_scan*)&scratch_buffer[0];
         lock_buffer->found_locks[lock_buffer->n_locks].rssi = p_adv_report->rssi;
         memcpy(&lock_buffer->found_locks[lock_buffer->n_locks].address.addr, p_adv_report->peer_addr.addr, BLE_GAP_ADDR_LEN);
@@ -421,12 +420,17 @@ static void on_ble_evt(ble_evt_t const* p_ble_evt, void* p_context) {
         case BLE_GAP_EVT_ADV_REPORT: {
             if(connection_handle != BLE_CONN_HANDLE_INVALID) { break; }
             const ble_gap_evt_adv_report_t* p_adv_report = &p_gap_evt->params.adv_report;
-            find_lock_to_connect(p_adv_report);
+            if(action_to_execute == ACTION_PAIRING) {
+                find_lock_in_pairing_mode(p_adv_report);
+            } else {
+                find_locks(p_adv_report);
+            }
         }
         break;
 
         case BLE_GAP_EVT_CONNECTED:
             NRF_LOG_INFO("Connected to Nuki");
+            reset_shutdown_timer();
             nrf_ble_scan_stop();
             connection_handle = p_ble_evt->evt.gap_evt.conn_handle;
             //Pairing mode doesn't support mtu exchange
@@ -440,14 +444,8 @@ static void on_ble_evt(ble_evt_t const* p_ble_evt, void* p_context) {
 
         case BLE_GAP_EVT_TIMEOUT:
             if(p_gap_evt->params.timeout.src == BLE_GAP_TIMEOUT_SRC_SCAN) {
-                if(action_to_execute == ACTION_PAIRING) {
-                    NRF_LOG_INFO("No Nuki in pairing mode found, shutting down");
-                    shutdown();
-                }
-                else {
-                    NRF_LOG_INFO("Scanning finished, connecting to the nearest paired lock");
-                    connect_to_nearest_lock();
-                }
+                NRF_LOG_INFO("No Nuki in pairing mode found, shutting down");
+                shutdown();
             }
             else if(p_gap_evt->params.timeout.src == BLE_GAP_TIMEOUT_SRC_CONN) {
                 if(handles_updated){
@@ -483,6 +481,7 @@ static void on_ble_evt(ble_evt_t const* p_ble_evt, void* p_context) {
             break;
 
         case BLE_GATTC_EVT_EXCHANGE_MTU_RSP:
+            NRF_LOG_INFO("Finnished MTU exchange");
             set_bt_comm_mtu_size(p_ble_evt->evt.gattc_evt.params.exchange_mtu_rsp.server_rx_mtu);
             if(application_state == AS_DISCOVER_SERVICES) {
                 reset_shutdown_timer();
@@ -645,13 +644,10 @@ static void handle_application(void) {
     switch(application_state) {
         case AS_INPUT_FINISHED:
             signal_action();
-            scan_start();
-            application_state = AS_WAIT_FOR_INDICATIONS_ENABLED;
-            break;
-
-        case AS_ENABLE_INDICATIONS:
-            enable_indications();
-            application_state = AS_WAIT_FOR_INDICATIONS_ENABLED;
+            if(action_to_execute != ACTION_PAIRING) {
+               connect_to_nearest_lock(); 
+            }
+            application_state = AS_ENABLE_INDICATIONS;
             break;
 
         case AS_LOCK_COMMUNICATION:
@@ -675,6 +671,7 @@ int main(void) {
     initialize_timer();
     init_gpio();
     gatt_init();
+    scan_start();
 
     while(true) {
         if(NRF_LOG_PROCESS() == false) {
