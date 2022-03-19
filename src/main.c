@@ -46,7 +46,7 @@
 #define BUTTON_PIN 11
 #define LED_PIN 30
 
-#define LED_ON 1
+#define LED_ON 0
 #define LED_OFF !LED_ON
 
 #define BUTTON_PULL NRF_GPIO_PIN_PULLUP
