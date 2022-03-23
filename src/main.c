@@ -85,6 +85,7 @@ static uint16_t io_characteristic_handle = 0;
 static uint16_t cccd_handle = 0;
 static bool handles_updated = false;
 
+static bool button_down_on_boot = false;
 static volatile uint8_t times_button_released = 0;
 static volatile float seconds_since_startup = 0;
 
@@ -291,7 +292,7 @@ static void scan_start() {
     shutdown_on_error(err_code);
 }
 
-static void find_lock_in_pairing_mode(const ble_gap_evt_adv_report_t* p_adv_report) {
+static void find_lock_in_pairing_mode_and_connect(const ble_gap_evt_adv_report_t* p_adv_report) {
     if(advertises_pairing(&p_adv_report->data)) {
         memcpy(&nuki_ctx.pairing.key.lock_uuid, p_adv_report->peer_addr.addr, BLE_GAP_ADDR_LEN);
 
@@ -301,7 +302,7 @@ static void find_lock_in_pairing_mode(const ble_gap_evt_adv_report_t* p_adv_repo
     }
 }
 
-static void find_locks(const ble_gap_evt_adv_report_t* p_adv_report) {
+static void find_locks_and_add_to_list(const ble_gap_evt_adv_report_t* p_adv_report) {
     if(advertises_keyturner(&p_adv_report->data)) {
         lock_scan* lock_buffer = (lock_scan*)&scratch_buffer[0];
         lock_buffer->found_locks[lock_buffer->n_locks].rssi = p_adv_report->rssi;
@@ -419,9 +420,9 @@ static void on_ble_evt(ble_evt_t const* p_ble_evt, void* p_context) {
             if(connection_handle != BLE_CONN_HANDLE_INVALID) { break; }
             const ble_gap_evt_adv_report_t* p_adv_report = &p_gap_evt->params.adv_report;
             if(action_to_execute == ACTION_PAIRING) {
-                find_lock_in_pairing_mode(p_adv_report);
+                find_lock_in_pairing_mode_and_connect(p_adv_report);
             } else {
-                find_locks(p_adv_report);
+                find_locks_and_add_to_list(p_adv_report);
             }
         }
         break;
