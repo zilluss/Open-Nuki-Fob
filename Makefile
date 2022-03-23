@@ -1,13 +1,14 @@
 PROJECT_NAME     := open_nuki_fob
 TARGETS          := nrf52832_xxaa
 OUTPUT_DIRECTORY := build
-APP_VERSION="0.4.0"
+APP_VERSION="0.7.0"
+BOOTLOADER_VERSION=2
 BUILD := debug
 
 SDK_ROOT=$(HOME)/Work/Internal/nordic-master/nrfsdk
 TEMPLATE_PATH=$(SDK_ROOT)/components/toolchain/gcc
-OPENOCD_HOME=/Users/martin/Work/Internal/openocd-code
-OPENOCD=/Users/martin/Work/Internal/openocd-code/src/openocd
+OPENOCD_HOME=/usr/local/Cellar/open-ocd/0.11.0/
+OPENOCD=$(OPENOCD_HOME)/bin/openocd
 NRFUTIL=$(HOME)/Work/Internal/nordic-master/nrfutil-mac
 MERGEHEX=/usr/local/bin/mergehex
 
@@ -321,10 +322,10 @@ bootloader:
 	$(MAKE) -C $(PROJ_DIR)/secure_bootloader
 
 bootloader_settings: bootloader nrf52832_xxaa
-	$(NRFUTIL) settings generate --application $(HEX_FILE) --application-version-string $(APP_VERSION) --bootloader-version 1 --bl-settings-version 2 --no-backup --family NRF52 --softdevice $(S132_HEX_FILE) --key-file $(BOOTLOADER_PRIVATE_KEY) $(BOOTLOADER_SETTINGS_HEX_FILE)
+	$(NRFUTIL) settings generate --application $(HEX_FILE) --application-version-string $(APP_VERSION) --bootloader-version $(BOOTLOADER_VERSION) --bl-settings-version 2 --no-backup --family NRF52 --softdevice $(S132_HEX_FILE) --key-file $(BOOTLOADER_PRIVATE_KEY) $(BOOTLOADER_SETTINGS_HEX_FILE)
 
 dfu_update: nrf52832_xxaa
-	$(NRFUTIL) pkg generate --application $(HEX_FILE) --application-version-string $(APP_VERSION) --bootloader $(BOOTLOADER_HEX_FILE) --bootloader-version 1 --sd-id 0x101 --sd-req 0x101 --softdevice $(S132_HEX_FILE) --hw-version 52 --key-file $(BOOTLOADER_PRIVATE_KEY) $(DFU_UPDATE_PKG)
+	$(NRFUTIL) pkg generate --application $(HEX_FILE) --application-version-string $(APP_VERSION) --bootloader $(BOOTLOADER_HEX_FILE) --bootloader-version $(BOOTLOADER_VERSION) --sd-id 0x101 --sd-req 0x101 --softdevice $(S132_HEX_FILE) --hw-version 52 --key-file $(BOOTLOADER_PRIVATE_KEY) $(DFU_UPDATE_PKG)
 
 fat_hex: bootloader bootloader_settings nrf52832_xxaa
 	$(MERGEHEX) -m $(S132_HEX_FILE) $(HEX_FILE) $(BOOTLOADER_HEX_FILE) $(BOOTLOADER_SETTINGS_HEX_FILE) -o $(FAT_HEX_FILE)
