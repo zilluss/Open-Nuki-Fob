@@ -72,7 +72,6 @@ const ble_uuid128_t NUKI_KEYTURNER_SERVICE_UUID = { .uuid128 = { NUKI_KEYTURNER_
 const ble_uuid128_t NUKI_PAIRING_SERVICE_UUID = { .uuid128 = { NUKI_PAIRING_SERVICE_BASE_UUID } };
 
 #define RESET_TO_DFU_BOOTLOADER 0xB1
-#define FIRST_STARTUP_CHECK 0x3A
 
 NRF_BLE_SCAN_DEF(m_scan);
 NRF_BLE_GATT_DEF(m_gatt);
@@ -520,11 +519,7 @@ static void ble_stack_init(void) {
 
     NRF_SDH_BLE_OBSERVER(m_ble_observer, APP_BLE_OBSERVER_PRIO, on_ble_evt, NULL);
 
-    uint32_t gpregret;
-    sd_power_gpregret_get(1, &gpregret);
-    sd_power_gpregret_set(1, FIRST_STARTUP_CHECK);
-
-    if(gpregret != FIRST_STARTUP_CHECK) {
+    if(!button_down_on_boot) {
         //Shutdown if the fob was started from a power cycle or DFU reboot
         shutdown();
     }
@@ -685,6 +680,8 @@ static void handle_application(void) {
 }
 
 int main(void) {
+    nrf_gpio_cfg_input(BUTTON_PIN, BUTTON_PULL);
+    button_down_on_boot = (nrf_gpio_pin_read(BUTTON_PIN) == APP_BUTTON_ACTIVE_LOW);
     log_init();
     ble_stack_init();
     initialize_timer();
