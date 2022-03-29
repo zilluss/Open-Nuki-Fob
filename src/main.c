@@ -140,13 +140,13 @@ typedef struct {
 } lock_scan;
 
 static void reset_into_bootloader() {
-    NRF_LOG_DEBUG("Resetting into bootloader");
+    NRF_LOG_INFO("Resetting into bootloader");
     sd_power_gpregret_set(0, RESET_TO_DFU_BOOTLOADER);
     sd_nvic_SystemReset();
 }
 
 static void shutdown() {
-    NRF_LOG_DEBUG("Enter sleep mode");
+    NRF_LOG_INFO("Enter sleep mode");
     NRF_LOG_FINAL_FLUSH();
     nrf_gpio_pin_write(LED_PIN, LED_OFF);
     nrf_gpio_cfg_sense_input(BUTTON_PIN, BUTTON_PULL, BUTTON_SENSE);
@@ -237,7 +237,7 @@ static bool advertises_keyturner(const ble_data_t* advertising_data) {
 }
 
 static uint32_t enable_indications() {
-    NRF_LOG_DEBUG("Enable indications");
+    NRF_LOG_INFO("Enable indications");
     uint8_t buf[BLE_CCCD_VALUE_LEN];
 
     buf[0] = BLE_GATT_HVX_INDICATION;
@@ -258,7 +258,7 @@ static uint32_t enable_indications() {
 }
 
 static void start_service_discovery() {
-    NRF_LOG_DEBUG("Start service discovery");
+    NRF_LOG_INFO("Start service discovery");
     uint8_t uuid_type;
     ble_uuid_t uuid;
 
@@ -278,7 +278,7 @@ static void start_service_discovery() {
 }
 
 static void scan_start() {
-    NRF_LOG_DEBUG("Scanning for locks started");
+    NRF_LOG_INFO("Scanning for locks started");
     ret_code_t err_code;
     nrf_ble_scan_init_t init_scan;
 
@@ -453,7 +453,7 @@ static void on_ble_evt(ble_evt_t const* p_ble_evt, void* p_context) {
         }
 
         case BLE_GAP_EVT_CONNECTED:
-            NRF_LOG_DEBUG("Connected to Nuki");
+            NRF_LOG_INFO("Connected to Nuki");
             reset_shutdown_timer();
             nrf_ble_scan_stop();
             connection_handle = p_ble_evt->evt.gap_evt.conn_handle;
@@ -462,20 +462,20 @@ static void on_ble_evt(ble_evt_t const* p_ble_evt, void* p_context) {
 
         case BLE_GAP_EVT_TIMEOUT:
             if(p_gap_evt->params.timeout.src == BLE_GAP_TIMEOUT_SRC_SCAN) {
-                NRF_LOG_DEBUG("No Nuki in pairing mode found, shutting down");
+                NRF_LOG_INFO("No Nuki in pairing mode found, shutting down");
                 shutdown();
             }
             else if(p_gap_evt->params.timeout.src == BLE_GAP_TIMEOUT_SRC_CONN) {
                 //timeout after handle update, fob can be shut down
                 if(update_handles) {
-                    NRF_LOG_DEBUG("Connection timeout, shutting down");
+                    NRF_LOG_INFO("Connection timeout, shutting down");
                     shutdown();
                 }
             }
             break;
 
         case BLE_GAP_EVT_DISCONNECTED:
-            NRF_LOG_DEBUG("Disconnected from Nuki");
+            NRF_LOG_INFO("Disconnected from Nuki, reason: %i",  p_ble_evt->evt.gap_evt.params.disconnected.reason);
             connection_handle = BLE_CONN_HANDLE_INVALID;
             //Disconnected without unlocking, reconnect and update handles
             if(action_to_execute != ACTION_PAIRING && !update_handles) {
@@ -489,13 +489,13 @@ static void on_ble_evt(ble_evt_t const* p_ble_evt, void* p_context) {
 
         case BLE_GATTC_EVT_WRITE_RSP:
             if(application_state == AS_WAIT_FOR_INDICATIONS_ENABLED) {
-                NRF_LOG_DEBUG("Indications enabled");
+                NRF_LOG_INFO("Indications enabled");
                 application_state = AS_INDICATIONS_ENABLED;
             }
             break;
 
         case BLE_GATTC_EVT_EXCHANGE_MTU_RSP:
-            NRF_LOG_DEBUG("Finnished MTU exchange");
+            NRF_LOG_INFO("Finnished MTU exchange");
             set_bt_comm_mtu_size(p_ble_evt->evt.gattc_evt.params.exchange_mtu_rsp.server_rx_mtu);
             application_state = AS_MTU_UPDATED;
             break;
@@ -537,7 +537,7 @@ static void finish_input_handling(uint16_t action) {
     }
 
     application_state = AS_INPUT_FINISHED;
-    NRF_LOG_DEBUG("Action to execute: %i", action);
+    NRF_LOG_INFO("Action to execute: %i", action);
 }
 
 static void input_timer_handler(void* p_context) {
@@ -571,7 +571,7 @@ static void input_timer_handler(void* p_context) {
                 finish_input_handling(ACTION_FOB_3);
                 return;
             default:
-                NRF_LOG_DEBUG("Invalid input, shutting down");
+                NRF_LOG_INFO("Invalid input, shutting down");
                 shutdown();
         }
     }
@@ -715,7 +715,7 @@ int main(void) {
     init_gpio();
     gatt_init();
 
-    NRF_LOG_DEBUG("Initialization done");
+    NRF_LOG_INFO("Initialization done");
     scan_start();
 
     while(true) {
