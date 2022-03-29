@@ -56,6 +56,7 @@
 APP_TIMER_DEF(input_timer_id);
 APP_TIMER_DEF(shutdown_timer_id);
 APP_TIMER_DEF(led_timer_id);
+APP_TIMER_DEF(scan_timer_id);
 
 #define INPUT_TICKS APP_TIMER_TICKS(500)
 #define SHUTDOWN_TICKS APP_TIMER_TICKS(30*1000)
@@ -104,6 +105,7 @@ static nuki_context nuki_ctx;
 
 
 static const ble_gap_scan_params_t m_scan_params = {
+    .extended = 0,
     .active = 0,
     .filter_policy = BLE_GAP_SCAN_FP_ACCEPT_ALL,
     .interval = BLE_SCAN_INTERVAL,
@@ -475,7 +477,7 @@ static void on_ble_evt(ble_evt_t const* p_ble_evt, void* p_context) {
             break;
 
         case BLE_GAP_EVT_DISCONNECTED:
-            NRF_LOG_INFO("Disconnected from Nuki, reason: %i",  p_ble_evt->evt.gap_evt.params.disconnected.reason);
+            NRF_LOG_INFO("Disconnected from Nuki, reason: 0x%2x",  p_ble_evt->evt.gap_evt.params.disconnected.reason);
             connection_handle = BLE_CONN_HANDLE_INVALID;
             //Disconnected without unlocking, reconnect and update handles
             if(action_to_execute != ACTION_PAIRING && !update_handles) {
@@ -583,6 +585,10 @@ static void led_timer() {
     if(blink_bit >= BLINK_PATTERN_BITS) blink_bit = 0;
 }
 
+static void scan_timer() {
+    application_state = AS_CONNECT_TO_LOCK;
+}
+
 static void initialize_timer(void) {
     app_timer_init();
 
@@ -594,6 +600,7 @@ static void initialize_timer(void) {
 
     app_timer_create(&led_timer_id, APP_TIMER_MODE_REPEATED, led_timer);
     app_timer_start(led_timer_id, LED_TIMER_TICKS, NULL);
+    app_timer_create(&scan_timer_id, APP_TIMER_MODE_SINGLE_SHOT, scan_timer);
 }
 
 static void button_handler_callback(uint8_t pin, uint8_t action) {
@@ -614,6 +621,7 @@ static void init_gpio() {
     };
 
     ret_code_t err_code = app_button_init(buttons, ARRAY_SIZE(buttons), BUTTON_DETECTION_DELAY);
+    nrf_gpio_cfg_sense_input(BUTTON_PIN, BUTTON_PULL, BUTTON_SENSE);
     shutdown_on_error(err_code);
 
     nrf_gpio_cfg_output(LED_PIN);
@@ -647,7 +655,12 @@ static void handle_application(void) {
     switch(application_state) {
         case AS_INPUT_FINISHED:
             signal_action();
-            application_state = AS_CONNECT_TO_LOCK;
+            if(action_to_execute == ACTION_PAIRING) {
+                application_state = AS_CONNECT_TO_LOCK;
+            } else {
+                //scan for additional time to find all locks
+                app_timer_start(scan_timer_id, SCAN_TIMER_TICKS, NULL);
+            }
             break;
 
         case AS_CONNECT_TO_LOCK:
