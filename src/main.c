@@ -329,13 +329,13 @@ static void connect_to_nearest_lock() {
     lock_pairing const* nearest_paired_lock = NULL;
     const handle_cache* handles = get_handle_cache();
 
-    int8_t lowest_rssi = INT8_MAX;
+    int8_t highest_rssi = INT8_MIN;
     for(int found_lock_index = 0; found_lock_index < lock_buffer->n_locks; found_lock_index++) {
         for(int paired_lock_index = 0; paired_lock_index < MAX_PAIRINGS; paired_lock_index++) {
             advertised_lock* advertised_lock = &lock_buffer->found_locks[found_lock_index];
             lock_pairing const* paired_lock = &fob_data->paired_locks[paired_lock_index];
-            if(is_paired_uuid(paired_lock, advertised_lock->address.addr) && advertised_lock->rssi < lowest_rssi) {
-                lowest_rssi = advertised_lock->rssi;
+            if(is_paired_uuid(paired_lock, advertised_lock->address.addr) && advertised_lock->rssi > highest_rssi) {
+                highest_rssi = advertised_lock->rssi;
                 nearest_advertised_lock = advertised_lock;
                 nearest_paired_lock = &fob_data->paired_locks[paired_lock_index];
                 cccd_handle = handles->handle_for_lock[paired_lock_index].cccd_handle;
