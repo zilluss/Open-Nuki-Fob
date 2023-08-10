@@ -69,8 +69,8 @@
 #define BLINK_PATTERN_TRANSPORT 0b1110011100100100
 #define BLINK_PATTERN_BOOTLOADER 0b1010101010101010
 
-#define LED_PIN 30
-#define LED_ON 0
+#define LED_PIN 26
+#define LED_ON 1
 #define LED_OFF !LED_ON
 static uint8_t blink_bit = 0;
 static uint16_t blink_pattern = BLINK_PATTERN_BOOTLOADER;

@@ -1,0 +1,11 @@
+old revision:
+Button Pin: 25
+LED Pin 26
+LED ON = 1 
+NRF_DFU_HW_VERSION = 51
+
+new revision
+Button Pin 11
+LED Pin 30
+LED ON = 0
+NRF_DFU_HW_VERSION = 52

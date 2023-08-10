@@ -1051,7 +1051,7 @@
 // <i> It is checked against the hw_version value in the init packet
 
 #ifndef NRF_DFU_HW_VERSION
-#define NRF_DFU_HW_VERSION 52
+#define NRF_DFU_HW_VERSION 51
 #endif
 
 // <q> NRF_DFU_REQUIRE_SIGNED_APP_UPDATE  - Require a valid signature to update the application or SoftDevice.
